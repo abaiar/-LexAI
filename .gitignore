@@ -1,0 +1,78 @@
+# Environment variables - NEVER commit .env files
+.env
+.env.local
+.env.*.local
+backend/.env
+.env.production
+.env.development
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+.venv/
+env/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+dist-ssr/
+coverage/
+
+# Test
+test-results/
+playwright-report/
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Secrets
+*.pem
+*.key
+*.p12
+
+# Credentials & Secrets
+credentials.json
+secrets.json
+*secret*
+*credential*
+*.pfx
+
+# Trae IDE
+.trae/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
