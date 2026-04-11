@@ -23,6 +23,8 @@ OUTLINE_PROMPT = """你是一位资深合同起草专家。请根据以下信息
 
 参考大纲结构：{outline_sections}
 
+{law_search_result}
+
 要求：
 1. 基于用户提供的信息，生成详细的合同大纲
 2. 大纲应包含各主要条款的要点说明
@@ -104,6 +106,8 @@ async def generate_contract_outline(
     if not settings.is_api_key_configured():
         return {"outline": "", "error": "API Key 未配置"}
 
+    law_search_result = await search_relevant_laws(template.name)
+
     llm = _get_llm(temperature=0.5)
     elements_text = _format_elements(template, elements)
     outline_sections = "、".join(template.outline_sections)
@@ -119,6 +123,7 @@ async def generate_contract_outline(
             "elements_text": elements_text,
             "outline_sections": outline_sections,
             "law_refs": law_refs,
+            "law_search_result": law_search_result,
         })
         return {"outline": result, "template_id": template_id}
     except Exception as e:
@@ -169,12 +174,42 @@ async def generate_contract_text(
 
 
 async def search_relevant_laws(keyword: str) -> str:
+    results = []
     try:
-        from tools.deli_law_tool import search_law
+        from tools.deli_law_tool import search_law, get_law_detail
         result = await search_law.ainvoke({"keyword": keyword})
-        return f"\n\n相关法规检索结果：\n{result}"
+        if result and "不可用" not in result and "未找到" not in result:
+            results.append(f"【法规检索 - {keyword}】\n{result}")
+            law_id = _extract_law_id(result)
+            if law_id:
+                try:
+                    detail = await get_law_detail.ainvoke({"law_id": law_id})
+                    if detail and "不可用" not in detail:
+                        results.append(f"【法规详情】\n{detail[:1500]}")
+                except Exception:
+                    pass
     except Exception:
-        return ""
+        pass
+
+    try:
+        from tools.deli_case_tool import search_case
+        result = await search_case.ainvoke({"keyword": keyword})
+        if result and "不可用" not in result and "未找到" not in result:
+            results.append(f"【案例检索 - {keyword}】\n{result[:800]}")
+    except Exception:
+        pass
+
+    if results:
+        return "\n\n相关法规和案例检索结果：\n" + "\n\n".join(results)
+    return ""
+
+
+def _extract_law_id(search_result: str) -> str:
+    import re
+    match = re.search(r'lawId:\s*(\S+)', search_result)
+    if match:
+        return match.group(1).strip()
+    return ""
 
 
 async def generate_document(

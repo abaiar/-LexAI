@@ -184,7 +184,7 @@ async def create_contract(req: ContractGenerateRequest):
     template_name = template.name if template else _user_templates_db[req.template_id].get("name", "")
 
     law_search_result = ""
-    if req.search_law and template:
+    if template:
         law_search_result = await search_relevant_laws(template.name)
 
     result = await generate_contract_text(

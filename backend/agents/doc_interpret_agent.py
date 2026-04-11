@@ -4,12 +4,17 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
+from tools.deli_law_tool import search_law, get_law_detail
+from tools.deli_case_tool import search_case
+from tools.law_parser import parse_law_references
 
 
 DOC_INTERPRET_PROMPT = """你是一位资深法律文书解读专家，擅长将复杂的法律文书转化为普通人容易理解的语言。请对以下法律文书文本进行全面的智能解读分析。
 
 法律文书文本：
 {doc_text}
+
+{law_context}
 
 请从以下维度进行解读：
 
@@ -100,13 +105,67 @@ def _parse_json_result(raw: str) -> dict:
     return json.loads(cleaned)
 
 
+async def _search_relevant_legal_info(doc_text: str) -> str:
+    law_refs = parse_law_references(doc_text)
+    context_parts = []
+
+    search_keywords = law_refs[:3] if law_refs else ["民法典", "合同法"]
+
+    try:
+        law_results = []
+        for keyword in search_keywords:
+            result = await search_law.ainvoke({"keyword": keyword})
+            if result and "不可用" not in result and "未找到" not in result:
+                law_results.append(f"【法规检索 - {keyword}】\n{result}")
+                law_id = _extract_law_id(result)
+                if law_id:
+                    try:
+                        detail = await get_law_detail.ainvoke({"law_id": law_id})
+                        if detail and "不可用" not in detail:
+                            law_results.append(f"【法规详情】\n{detail[:1500]}")
+                    except Exception:
+                        pass
+
+        if law_results:
+            context_parts.append("\n\n".join(law_results))
+    except Exception:
+        pass
+
+    try:
+        case_keywords = law_refs[:2] if law_refs else ["合同纠纷"]
+        for keyword in case_keywords:
+            result = await search_case.ainvoke({"keyword": keyword})
+            if result and "不可用" not in result and "未找到" not in result:
+                context_parts.append(f"【案例检索 - {keyword}】\n{result[:800]}")
+                break
+    except Exception:
+        pass
+
+    if context_parts:
+        return "以下是通过得理API检索到的相关法规和案例，请在解读时参考：\n\n" + "\n\n".join(context_parts)
+    return ""
+
+
+def _extract_law_id(search_result: str) -> str:
+    import re
+    match = re.search(r'lawId:\s*(\S+)', search_result)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
 async def interpret_document(doc_text: str) -> dict:
+    law_context = await _search_relevant_legal_info(doc_text)
+
     llm = _get_llm()
     prompt = ChatPromptTemplate.from_template(DOC_INTERPRET_PROMPT)
     chain = prompt | llm | StrOutputParser()
 
     try:
-        result = await chain.ainvoke({"doc_text": doc_text[:15000]})
+        result = await chain.ainvoke({
+            "doc_text": doc_text[:15000],
+            "law_context": law_context,
+        })
         parsed = _parse_json_result(result)
 
         return {

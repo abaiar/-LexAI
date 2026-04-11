@@ -6,6 +6,8 @@ from typing import Dict
 
 from config import settings
 from agents.docgen_templates import DocTemplate, get_doc_template_by_id
+from tools.deli_law_tool import search_law, get_law_detail
+from tools.deli_case_tool import search_case
 
 
 DOC_TEMPLATES_LEGACY = {
@@ -113,6 +115,8 @@ DOCGEN_PROMPT = """你是一位专业的法律文书起草专家。请根据以�
 案情描述：{fact}
 诉求说明：{demands}
 
+{law_context}
+
 要求：
 1. 严格按照中国司法实务规范格式撰写
 2. 根据简述的案情，自动扩写事实与理由部分，使其详实完整、逻辑清晰
@@ -146,6 +150,51 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
+async def _search_relevant_laws_for_doc(doc_type: str, fact: str) -> str:
+    keyword_map = {
+        "劳动仲裁申请书": "劳动争议",
+        "民事起诉状": "民事诉讼",
+        "律师函": "律师函法律依据",
+        "离婚协议书": "离婚协议 民法典",
+    }
+    keyword = keyword_map.get(doc_type, doc_type)
+    results = []
+
+    try:
+        result = await search_law.ainvoke({"keyword": keyword})
+        if result and "不可用" not in result and "未找到" not in result:
+            results.append(f"【法规检索 - {keyword}】\n{result}")
+            law_id = _extract_law_id(result)
+            if law_id:
+                try:
+                    detail = await get_law_detail.ainvoke({"law_id": law_id})
+                    if detail and "不可用" not in detail:
+                        results.append(f"【法规详情】\n{detail[:1500]}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        result = await search_case.ainvoke({"keyword": keyword})
+        if result and "不可用" not in result and "未找到" not in result:
+            results.append(f"【案例检索 - {keyword}】\n{result[:800]}")
+    except Exception:
+        pass
+
+    if results:
+        return "以下是通过得理API检索到的相关法规和案例，请在起草文书时参考：\n\n" + "\n\n".join(results)
+    return ""
+
+
+def _extract_law_id(search_result: str) -> str:
+    import re
+    match = re.search(r'lawId:\s*(\S+)', search_result)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
 async def generate_document(
     doc_type: str,
     plaintiff: str,
@@ -158,6 +207,8 @@ async def generate_document(
             "document_text": "错误：API Key 未配置。请先前往「账户设置」配置大模型 API Key。",
             "template_used": doc_type,
         }
+
+    law_context = await _search_relevant_laws_for_doc(doc_type, fact)
 
     llm = _get_llm()
 
@@ -177,6 +228,7 @@ async def generate_document(
             "fact": fact,
             "demands": demands or "由AI根据案情自动生成",
             "date": current_date,
+            "law_context": law_context,
         })
 
         return {
@@ -249,6 +301,7 @@ DOCGEN_GENERATE_PROMPT = """你是一位资深法律文书起草专家。请根�
 {outline}
 
 相关法律依据：{law_refs}
+{law_context}
 
 要求：
 1. 严格按照大纲结构，逐部分生成完整的文书内容
@@ -309,6 +362,36 @@ async def generate_doc_outline(
         return {"outline": fallback_sections, "template_id": template_id, "error": str(e)}
 
 
+async def _search_relevant_laws_for_template(template_name: str) -> str:
+    results = []
+
+    try:
+        result = await search_law.ainvoke({"keyword": template_name})
+        if result and "不可用" not in result and "未找到" not in result:
+            results.append(f"【法规检索 - {template_name}】\n{result}")
+            law_id = _extract_law_id(result)
+            if law_id:
+                try:
+                    detail = await get_law_detail.ainvoke({"law_id": law_id})
+                    if detail and "不可用" not in detail:
+                        results.append(f"【法规详情】\n{detail[:1500]}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        result = await search_case.ainvoke({"keyword": template_name})
+        if result and "不可用" not in result and "未找到" not in result:
+            results.append(f"【案例检索 - {template_name}】\n{result[:800]}")
+    except Exception:
+        pass
+
+    if results:
+        return "\n\n通过得理API检索到的相关法规和案例：\n\n" + "\n\n".join(results)
+    return ""
+
+
 async def generate_doc_text(
     template_id: str,
     elements: Dict[str, str],
@@ -320,6 +403,8 @@ async def generate_doc_text(
 
     if not settings.is_api_key_configured():
         return {"document_text": "", "error": "API Key 未配置"}
+
+    law_context = await _search_relevant_laws_for_template(template.name)
 
     llm = _get_llm()
     elements_text = _format_doc_elements(template, elements)
@@ -336,6 +421,7 @@ async def generate_doc_text(
             "elements_text": elements_text,
             "outline": outline,
             "law_refs": law_refs,
+            "law_context": law_context,
             "date": current_date,
         })
         return {

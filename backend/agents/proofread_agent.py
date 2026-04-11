@@ -4,6 +4,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
+from tools.deli_law_tool import search_law, get_law_detail
+from tools.deli_case_tool import search_case
 
 
 PROOFREAD_PROMPT = """你是一位专业的中文文档校对专家，擅长识别和修正各类文档中的语言错误。请对以下文档文本进行全面的校对检查，识别所有语法错误、拼写错误、标点符号使用不当、语句不通顺等问题。
@@ -11,12 +13,15 @@ PROOFREAD_PROMPT = """你是一位专业的中文文档校对专家，擅长识�
 文档文本：
 {text}
 
+{law_context}
+
 请从以下维度进行校对：
 1. 语法错误：主谓不一致、语序不当、成分残缺或多余等
 2. 拼写错误：错别字、同音字混用、形近字误用等
 3. 标点符号：标点使用不当、缺失标点、中英文标点混用等
 4. 语句通顺：语义不清、逻辑混乱、表达冗余等
 5. 用词规范：用词不当、搭配不当、口语化表达等
+6. 法律术语：法律专业术语使用是否准确规范
 
 对每个错误，请提供：
 - 错误的原始文本
@@ -82,7 +87,55 @@ def _parse_json_result(raw: str) -> dict:
     return json.loads(cleaned)
 
 
+async def _search_law_terms_for_proofread(text: str) -> str:
+    from tools.law_parser import parse_law_references
+    law_refs = parse_law_references(text)
+
+    if not law_refs:
+        return ""
+
+    context_parts = []
+
+    for keyword in law_refs[:2]:
+        try:
+            result = await search_law.ainvoke({"keyword": keyword})
+            if result and "不可用" not in result and "未找到" not in result:
+                context_parts.append(f"【法规检索 - {keyword}】\n{result}")
+                law_id = _extract_law_id(result)
+                if law_id:
+                    try:
+                        detail = await get_law_detail.ainvoke({"law_id": law_id})
+                        if detail and "不可用" not in detail:
+                            context_parts.append(f"【法规详情】\n{detail[:1500]}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    for keyword in law_refs[:1]:
+        try:
+            result = await search_case.ainvoke({"keyword": keyword})
+            if result and "不可用" not in result and "未找到" not in result:
+                context_parts.append(f"【案例检索 - {keyword}】\n{result[:800]}")
+        except Exception:
+            pass
+
+    if context_parts:
+        return "以下是通过得理API检索到的相关法规和案例，请在校对法律术语时参考：\n\n" + "\n\n".join(context_parts)
+    return ""
+
+
+def _extract_law_id(search_result: str) -> str:
+    import re
+    match = re.search(r'lawId:\s*(\S+)', search_result)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
 async def proofread_text(text: str) -> dict:
+    law_context = await _search_law_terms_for_proofread(text)
+
     llm = _get_llm()
     prompt = ChatPromptTemplate.from_template(PROOFREAD_PROMPT)
     chain = prompt | llm | StrOutputParser()
@@ -90,6 +143,7 @@ async def proofread_text(text: str) -> dict:
     try:
         result = await chain.ainvoke({
             "text": text[:10000],
+            "law_context": law_context,
         })
         parsed = _parse_json_result(result)
 

@@ -4,6 +4,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
+from tools.deli_law_tool import search_law, get_law_detail
+from tools.deli_case_tool import search_case
+from tools.law_parser import parse_law_references
 
 
 CONTRACT_REVIEW_PROMPT = """你是一位资深合同审查专家。请对以下合同文本进行全面审查，识别风险条款和缺失条款。
@@ -21,8 +24,10 @@ CONTRACT_REVIEW_PROMPT = """你是一位资深合同审查专家。请对以下�
    - 不可抗力条款
    - 知识产权条款
    - 合同解除条款
-3. 为每个风险条款给出具体修改建议
+3. 为每个风险条款给出具体修改建议，引用相关法律条文作为依据
 4. 给出总体评分（0-100分）
+
+{law_context}
 
 请严格按照以下JSON格式输出，不要输出其他内容：
 {{
@@ -70,13 +75,67 @@ def _parse_json_result(raw: str) -> dict:
     return json.loads(cleaned)
 
 
+async def _search_relevant_legal_info(contract_text: str) -> str:
+    law_refs = parse_law_references(contract_text)
+    context_parts = []
+
+    search_keywords = law_refs[:3] if law_refs else ["合同法", "民法典合同编"]
+
+    try:
+        law_results = []
+        for keyword in search_keywords:
+            result = await search_law.ainvoke({"keyword": keyword})
+            if result and "不可用" not in result and "未找到" not in result:
+                law_results.append(f"【法规检索 - {keyword}】\n{result}")
+                law_id = _extract_law_id(result)
+                if law_id:
+                    try:
+                        detail = await get_law_detail.ainvoke({"law_id": law_id})
+                        if detail and "不可用" not in detail:
+                            law_results.append(f"【法规详情】\n{detail[:1500]}")
+                    except Exception:
+                        pass
+
+        if law_results:
+            context_parts.append("\n\n".join(law_results))
+    except Exception:
+        pass
+
+    try:
+        case_keywords = law_refs[:2] if law_refs else ["合同纠纷"]
+        for keyword in case_keywords:
+            result = await search_case.ainvoke({"keyword": keyword})
+            if result and "不可用" not in result and "未找到" not in result:
+                context_parts.append(f"【案例检索 - {keyword}】\n{result[:800]}")
+                break
+    except Exception:
+        pass
+
+    if context_parts:
+        return "以下是通过得理API检索到的相关法规和案例，请在审查时参考：\n\n" + "\n\n".join(context_parts)
+    return ""
+
+
+def _extract_law_id(search_result: str) -> str:
+    import re
+    match = re.search(r'lawId:\s*(\S+)', search_result)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
 async def review_contract(contract_text: str) -> dict:
+    law_context = await _search_relevant_legal_info(contract_text)
+
     llm = _get_llm()
     prompt = ChatPromptTemplate.from_template(CONTRACT_REVIEW_PROMPT)
     chain = prompt | llm | StrOutputParser()
 
     try:
-        result = await chain.ainvoke({"contract_text": contract_text})
+        result = await chain.ainvoke({
+            "contract_text": contract_text,
+            "law_context": law_context,
+        })
         parsed = _parse_json_result(result)
 
         return {

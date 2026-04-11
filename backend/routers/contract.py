@@ -3,6 +3,7 @@ from typing import Optional
 
 from agents.contract_agent import review_contract
 from models.response_models import ContractReviewResponse, ErrorResponse
+from tools.ocr_extractor import validate_file, extract_text_from_file
 from tools.law_parser import clean_contract_text
 
 router = APIRouter(prefix="/api/contract", tags=["合同审查"])
@@ -19,37 +20,19 @@ async def contract_review(
         content = await file.read()
         filename = file.filename or ""
 
-        if filename.lower().endswith(".pdf"):
-            try:
-                import io
-                from pypdf import PdfReader
-                reader = PdfReader(io.BytesIO(content))
-                pages = []
-                for page in reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        pages.append(page_text)
-                contract_text = "\n".join(pages)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail={"code": 400, "message": "PDF解析失败", "detail": str(e)},
-                )
-        elif filename.lower().endswith((".txt", ".docx")):
-            try:
-                contract_text = content.decode("utf-8")
-            except UnicodeDecodeError:
-                try:
-                    contract_text = content.decode("gbk")
-                except Exception:
-                    raise HTTPException(
-                        status_code=400,
-                        detail={"code": 400, "message": "文件编码无法识别", "detail": "请上传UTF-8或GBK编码的文本文件"},
-                    )
-        else:
+        error = validate_file(filename, content)
+        if error:
             raise HTTPException(
                 status_code=400,
-                detail={"code": 400, "message": "不支持的文件格式", "detail": "请上传PDF或TXT格式文件"},
+                detail={"code": 400, "message": "文件验证失败", "detail": error},
+            )
+
+        try:
+            contract_text = await extract_text_from_file(filename, content)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": "文件解析失败", "detail": str(e)},
             )
     elif text:
         contract_text = text
