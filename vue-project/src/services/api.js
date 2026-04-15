@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = '';
 async function request(path, options = {}) {
     const token = localStorage.getItem('access_token');
     const headers = {

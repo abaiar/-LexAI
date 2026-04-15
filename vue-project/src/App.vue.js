@@ -1,6 +1,16 @@
 import { ref, computed, nextTick, onMounted, watch } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { api } from './services/api';
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 const authStore = useAuthStore();
 const isLogin = ref(true);
 const currentView = ref('dashboard');
@@ -84,7 +94,7 @@ const chatMessages = ref([{ role: 'assistant', content: '您好！我是小理�
 const chatInput = ref('');
 const isChatTyping = ref(false);
 const chatContainer = ref(null);
-const currentSessionId = ref(crypto.randomUUID());
+const currentSessionId = ref(generateUUID());
 const agentStatusText = ref('');
 const scrollToBottom = (el) => { nextTick(() => { if (el)
     el.scrollTop = el.scrollHeight; }); };
@@ -159,7 +169,7 @@ const verticalSessionId = ref('');
 const verticalAgentStatusText = ref('');
 function openVerticalAgent(agentId) {
     verticalAgentType.value = agentId;
-    verticalSessionId.value = crypto.randomUUID();
+    verticalSessionId.value = generateUUID();
     const titleMap = { labor: '劳动纠纷维权 Agent', compliance: '企业合规检查 Agent', marriage: '婚姻与财产分割 Agent' };
     verticalAgentTitle.value = titleMap[agentId] || '专项 Agent';
     const greetingMap = {
@@ -691,7 +701,7 @@ async function startInterpret() {
             const headers = {};
             if (token)
                 headers['Authorization'] = `Bearer ${token}`;
-            const response = await fetch('http://127.0.0.1:8000/api/doc-interpret/interpret', {
+            const response = await fetch('/api/doc-interpret/interpret', {
                 method: 'POST',
                 headers,
                 body: formData,

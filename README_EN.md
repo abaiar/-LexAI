@@ -101,6 +101,7 @@ LexAI (小理智法 AI) is an intelligent legal consultation platform powered by
 | Provider | Default Model |
 |----------|--------------|
 | Alibaba DashScope | qwen-turbo |
+| Tencent Hunyuan | hunyuan-lite |
 | OpenAI | gpt-4o-mini |
 | DeepSeek | deepseek-chat |
 | Zhipu AI (GLM) | glm-4-flash |
@@ -220,12 +221,13 @@ Edit the `backend/.env` file:
 
 ```env
 # === LLM Configuration ===
-# Choose LLM provider: dashscope / openai / deepseek / zhipu / moonshot / minimax / anthropic / google
+# Choose LLM provider: dashscope / tencent_hunyuan / openai / deepseek / zhipu / moonshot / minimax / anthropic / google
 LLM_PROVIDER=dashscope
 LLM_MODEL_NAME=qwen-turbo
 
 # Provider API Keys (fill as needed)
 DASHSCOPE_API_KEY=your-dashscope-api-key-here
+TENCENT_HUNYUAN_API_KEY=
 OPENAI_API_KEY=
 DEEPSEEK_API_KEY=
 ZHIPU_API_KEY=

@@ -14,6 +14,15 @@ LLM_PROVIDERS = {
         "key_hint": "sk-开头的 API Key",
         "api_key_env": "DASHSCOPE_API_KEY",
     },
+    "tencent_hunyuan": {
+        "name": "腾讯混元 (Hunyuan)",
+        "base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+        "models": ["hunyuan-lite", "hunyuan-standard", "hunyuan-pro", "hunyuan-turbo", "hunyuan-turbo-latest"],
+        "default_model": "hunyuan-lite",
+        "key_prefix": "",
+        "key_hint": "腾讯云 API Key",
+        "api_key_env": "TENCENT_HUNYUAN_API_KEY",
+    },
     "openai": {
         "name": "OpenAI",
         "base_url": "https://api.openai.com/v1",
@@ -82,6 +91,7 @@ LLM_PROVIDERS = {
 
 class Settings:
     DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
+    TENCENT_HUNYUAN_API_KEY: str = os.getenv("TENCENT_HUNYUAN_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     ZHIPU_API_KEY: str = os.getenv("ZHIPU_API_KEY", "")

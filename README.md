@@ -101,6 +101,7 @@
 | 厂商 | 默认模型 |
 |------|---------|
 | 阿里云百炼 (DashScope) | qwen-turbo |
+| 腾讯混元 (Hunyuan) | hunyuan-lite |
 | OpenAI | gpt-4o-mini |
 | DeepSeek | deepseek-chat |
 | 智谱 AI (GLM) | glm-4-flash |
@@ -220,12 +221,13 @@ npm run dev
 
 ```env
 # === LLM 配置 ===
-# 选择 LLM 厂商：dashscope / openai / deepseek / zhipu / moonshot / minimax / anthropic / google
+# 选择 LLM 厂商：dashscope / tencent_hunyuan / openai / deepseek / zhipu / moonshot / minimax / anthropic / google
 LLM_PROVIDER=dashscope
 LLM_MODEL_NAME=qwen-turbo
 
 # 对应厂商的 API Key（按需填写）
 DASHSCOPE_API_KEY=your-dashscope-api-key-here
+TENCENT_HUNYUAN_API_KEY=
 OPENAI_API_KEY=
 DEEPSEEK_API_KEY=
 ZHIPU_API_KEY=
