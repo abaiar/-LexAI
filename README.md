@@ -237,7 +237,7 @@ ANTHROPIC_API_KEY=
 GOOGLE_API_KEY=
 
 # === 得理法律数据库 API ===
-# 注册地址：https://openapi.delilegal.com
+# 注册地址：https://open.delilegal.com/personal/keys
 DELI_APPID=your-deli-appid-here
 DELI_SECRET=your-deli-secret-here
 
