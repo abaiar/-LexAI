@@ -3,6 +3,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 全局修复 httpx HTTPS 连接问题：monkey-patch httpx.AsyncClient
+# 使其默认使用 urllib transport，解决本机 httpx 无法建立 HTTPS 连接的问题
+import httpx
+from utils.urllib_transport import AsyncUrllibTransport, UrllibTransport
+
+_original_async_client_init = httpx.AsyncClient.__init__
+_original_client_init = httpx.Client.__init__
+
+
+def _patched_async_client_init(self, **kwargs):
+    if "transport" not in kwargs and kwargs.get("verify", True) is not False:
+        kwargs["transport"] = AsyncUrllibTransport()
+        kwargs["verify"] = False
+    _original_async_client_init(self, **kwargs)
+
+
+def _patched_client_init(self, **kwargs):
+    if "transport" not in kwargs and kwargs.get("verify", True) is not False:
+        kwargs["transport"] = UrllibTransport()
+        kwargs["verify"] = False
+    _original_client_init(self, **kwargs)
+
+
+httpx.AsyncClient.__init__ = _patched_async_client_init
+httpx.Client.__init__ = _patched_client_init
+
 
 LLM_PROVIDERS = {
     "dashscope": {
@@ -157,3 +183,22 @@ class Settings:
 
 
 settings = Settings()
+
+
+def get_llm(**kwargs):
+    """创建 LLM 客户端，自动使用 urllib transport 解决 httpx 连接问题"""
+    from langchain_openai import ChatOpenAI
+    from utils.urllib_transport import get_http_client
+
+    api_key = kwargs.pop("api_key", None) or settings.get_active_api_key()
+    base_url = kwargs.pop("base_url", None) or settings.get_active_base_url()
+    model_name = kwargs.pop("model_name", None) or settings.get_active_model()
+
+    return ChatOpenAI(
+        model=model_name,
+        api_key=api_key,
+        base_url=base_url,
+        http_async_client=get_http_client(async_client=True),
+        http_client=get_http_client(async_client=False),
+        **kwargs,
+    )

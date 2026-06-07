@@ -2,14 +2,14 @@ import { ref, computed, nextTick, onMounted, watch } from 'vue';
 import { useAuthStore } from './stores/auth';
 import { api } from './services/api';
 function generateUUID() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
 }
 const authStore = useAuthStore();
 const isLogin = ref(true);
@@ -644,7 +644,6 @@ const interpretProgress = ref('');
 const interpretResult = ref(null);
 const interpretHistory = ref([]);
 const isLoadingInterpretHistory = ref(false);
-const interpretPreviewText = ref('');
 const isInterpretDisabled = computed(() => {
     if (isInterpreting.value)
         return true;
@@ -693,31 +692,6 @@ function validateInterpretFile(file) {
 async function startInterpret() {
     if (interpretInputMode.value === 'file' && interpretFile.value) {
         interpretStep.value = 2;
-        interpretPreviewText.value = '';
-        try {
-            const formData = new FormData();
-            formData.append('file', interpretFile.value);
-            const token = localStorage.getItem('access_token');
-            const headers = {};
-            if (token)
-                headers['Authorization'] = `Bearer ${token}`;
-            const response = await fetch('/api/doc-interpret/interpret', {
-                method: 'POST',
-                headers,
-                body: formData,
-            });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const detail = errorData.detail || {};
-                throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`);
-            }
-            interpretResult.value = await response.json();
-            interpretStep.value = 4;
-        }
-        catch (e) {
-            showToast('解读失败: ' + e.message, 'error');
-            interpretStep.value = 1;
-        }
     }
     else if (interpretInputMode.value === 'text' && interpretTextInput.value) {
         isInterpreting.value = true;
@@ -912,6 +886,11 @@ const allTemplatesFlat = ref([]);
 const draftSearchKeyword = ref('');
 const draftSearchResults = ref([]);
 const isSearchingTemplates = ref(false);
+const draftInputMode = ref('form');
+const draftNluInput = ref('');
+const draftNluFields = ref({});
+const draftNluQuestions = ref([]);
+const isExtractingFields = ref(false);
 let draftSearchTimer = null;
 const newTemplateForm = ref({
     name: '',
@@ -1048,6 +1027,30 @@ function selectDraftTemplate(template) {
     generatedContractText.value = '';
     contractQualityResult.value = null;
     draftStep.value = 2;
+}
+async function extractDraftFields() {
+    if (!selectedTemplate.value || !draftNluInput.value.trim())
+        return;
+    isExtractingFields.value = true;
+    try {
+        const result = await api.extractFields(draftNluInput.value, selectedTemplate.value.id);
+        if (result.fields) {
+            draftNluFields.value = result.fields;
+            for (const [key, value] of Object.entries(result.fields)) {
+                if (value && value !== null) {
+                    draftElements.value[key] = value;
+                }
+            }
+            const clarifyResult = await api.clarifyMissing(JSON.stringify(result.fields), selectedTemplate.value.id);
+            draftNluQuestions.value = clarifyResult.questions || [];
+        }
+    }
+    catch (err) {
+        console.error('字段提取失败:', err);
+    }
+    finally {
+        isExtractingFields.value = false;
+    }
 }
 async function handleGenerateOutline() {
     if (!selectedTemplate.value || !hasRequiredFields.value)
@@ -1280,6 +1283,11 @@ const docUsageFilter = ref('');
 const showDocPreviewModal = ref(false);
 const docPreviewTemplate = ref(null);
 const isLoadingDocCategories = ref(false);
+const docInputMode = ref('form');
+const docNluInput = ref('');
+const docNluFields = ref({});
+const docNluQuestions = ref([]);
+const isExtractingDocFields = ref(false);
 const docCategoryGradients = {
     litigation: 'linear-gradient(135deg, #ef4444, #dc2626)',
     labor_arb: 'linear-gradient(135deg, #14b8a6, #0d9488)',
@@ -1462,6 +1470,30 @@ function selectDocTemplate(template) {
         docRecentUsed.value = docRecentUsed.value.slice(0, 10);
     localStorage.setItem('docRecentUsed', JSON.stringify(docRecentUsed.value));
     docStep.value = 2;
+}
+async function extractDocFields() {
+    if (!selectedDocTemplate.value || !docNluInput.value.trim())
+        return;
+    isExtractingDocFields.value = true;
+    try {
+        const result = await api.extractFields(docNluInput.value, selectedDocTemplate.value.id);
+        if (result.fields) {
+            docNluFields.value = result.fields;
+            for (const [key, value] of Object.entries(result.fields)) {
+                if (value && value !== null) {
+                    docElements.value[key] = value;
+                }
+            }
+            const clarifyResult = await api.clarifyMissing(JSON.stringify(result.fields), selectedDocTemplate.value.id);
+            docNluQuestions.value = clarifyResult.questions || [];
+        }
+    }
+    catch (err) {
+        console.error('字段提取失败:', err);
+    }
+    finally {
+        isExtractingDocFields.value = false;
+    }
 }
 async function handleGenerateDocOutline() {
     if (!selectedDocTemplate.value || !hasRequiredDocFields.value)
@@ -5464,23 +5496,37 @@ else {
             /** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
             if (__VLS_ctx.interpretFile) {
                 __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "flex items-center space-x-3 mb-4 p-3 bg-slate-50 rounded-lg" },
+                    ...{ class: "space-y-4" },
+                });
+                /** @type {__VLS_StyleScopedClasses['space-y-4']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "flex items-center space-x-3 p-4 bg-amber-50 rounded-lg border border-amber-100" },
                 });
                 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
                 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
                 /** @type {__VLS_StyleScopedClasses['space-x-3']} */ ;
-                /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+                /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+                /** @type {__VLS_StyleScopedClasses['bg-amber-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['border']} */ ;
+                /** @type {__VLS_StyleScopedClasses['border-amber-100']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "p-3 bg-amber-100 rounded-lg" },
+                });
                 /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
-                /** @type {__VLS_StyleScopedClasses['bg-slate-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['bg-amber-100']} */ ;
                 /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
-                    ...{ class: "ph ph-file text-2xl text-amber-500" },
+                    ...{ class: "ph ph-file text-2xl text-amber-600" },
                 });
                 /** @type {__VLS_StyleScopedClasses['ph']} */ ;
                 /** @type {__VLS_StyleScopedClasses['ph-file']} */ ;
                 /** @type {__VLS_StyleScopedClasses['text-2xl']} */ ;
-                /** @type {__VLS_StyleScopedClasses['text-amber-500']} */ ;
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+                /** @type {__VLS_StyleScopedClasses['text-amber-600']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "flex-1" },
+                });
+                /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
                     ...{ class: "text-sm font-medium text-slate-800" },
                 });
@@ -5488,45 +5534,56 @@ else {
                 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
                 /** @type {__VLS_StyleScopedClasses['text-slate-800']} */ ;
                 (__VLS_ctx.interpretFile.name);
-                __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "flex items-center space-x-3 mt-1" },
+                });
+                /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+                /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+                /** @type {__VLS_StyleScopedClasses['space-x-3']} */ ;
+                /** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
                     ...{ class: "text-xs text-slate-400" },
                 });
                 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
                 /** @type {__VLS_StyleScopedClasses['text-slate-400']} */ ;
                 ((__VLS_ctx.interpretFile.size / 1024).toFixed(1));
-            }
-            if (__VLS_ctx.interpretPreviewText) {
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "bg-slate-50 p-4 rounded-lg text-sm text-slate-700 max-h-64 overflow-y-auto whitespace-pre-wrap" },
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                    ...{ class: "px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded" },
                 });
-                /** @type {__VLS_StyleScopedClasses['bg-slate-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+                /** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+                /** @type {__VLS_StyleScopedClasses['bg-amber-100']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-amber-700']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+                (__VLS_ctx.interpretFile.name.split('.').pop().toUpperCase());
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "p-4 bg-slate-50 rounded-lg" },
+                });
                 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+                /** @type {__VLS_StyleScopedClasses['bg-slate-50']} */ ;
                 /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
-                /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-                /** @type {__VLS_StyleScopedClasses['text-slate-700']} */ ;
-                /** @type {__VLS_StyleScopedClasses['max-h-64']} */ ;
-                /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
-                /** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
-                (__VLS_ctx.interpretPreviewText);
-            }
-            else {
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "text-center py-8 text-slate-400" },
-                });
-                /** @type {__VLS_StyleScopedClasses['text-center']} */ ;
-                /** @type {__VLS_StyleScopedClasses['py-8']} */ ;
-                /** @type {__VLS_StyleScopedClasses['text-slate-400']} */ ;
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "spinner-lg mx-auto mb-3" },
-                    ...{ style: {} },
-                });
-                /** @type {__VLS_StyleScopedClasses['spinner-lg']} */ ;
-                /** @type {__VLS_StyleScopedClasses['mx-auto']} */ ;
-                /** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
                 __VLS_asFunctionalElement1(__VLS_intrinsics.p, __VLS_intrinsics.p)({
-                    ...{ class: "text-sm" },
+                    ...{ class: "text-sm text-slate-600 mb-2" },
                 });
                 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-slate-600']} */ ;
+                /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "flex items-center space-x-2 text-xs text-slate-400" },
+                });
+                /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+                /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+                /** @type {__VLS_StyleScopedClasses['space-x-2']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-slate-400']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.i, __VLS_intrinsics.i)({
+                    ...{ class: "ph ph-info text-sm" },
+                });
+                /** @type {__VLS_StyleScopedClasses['ph']} */ ;
+                /** @type {__VLS_StyleScopedClasses['ph-info']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({});
             }
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "flex items-center justify-between" },
@@ -5543,9 +5600,8 @@ else {
                         if (!(__VLS_ctx.interpretStep === 2))
                             return;
                         __VLS_ctx.interpretStep = 1;
-                        __VLS_ctx.interpretPreviewText = '';
                         // @ts-ignore
-                        [interpretStep, interpretStep, interpretFile, interpretFile, interpretFile, startInterpret, isInterpretDisabled, isInterpreting, interpretPreviewText, interpretPreviewText, interpretPreviewText,];
+                        [interpretStep, interpretStep, interpretFile, interpretFile, interpretFile, interpretFile, startInterpret, isInterpretDisabled, isInterpreting,];
                     } },
                 ...{ class: "btn-outline text-sm" },
             });
@@ -5559,7 +5615,7 @@ else {
             /** @type {__VLS_StyleScopedClasses['mr-1.5']} */ ;
             __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
                 ...{ onClick: (__VLS_ctx.confirmInterpret) },
-                disabled: (!__VLS_ctx.interpretPreviewText || __VLS_ctx.isInterpreting),
+                disabled: (__VLS_ctx.isInterpreting),
                 ...{ class: "btn-primary text-sm" },
                 ...{ style: {} },
             });
@@ -5621,9 +5677,8 @@ else {
                             return;
                         __VLS_ctx.interpretStep = 1;
                         __VLS_ctx.interpretResult = null;
-                        __VLS_ctx.interpretPreviewText = '';
                         // @ts-ignore
-                        [interpretStep, interpretStep, interpretStep, isInterpreting, isInterpreting, interpretPreviewText, interpretPreviewText, confirmInterpret, interpretProgress, interpretResult, interpretResult,];
+                        [interpretStep, interpretStep, interpretStep, isInterpreting, isInterpreting, confirmInterpret, interpretProgress, interpretResult, interpretResult,];
                     } },
                 ...{ class: "btn-outline text-sm" },
             });
@@ -8608,81 +8663,282 @@ else {
             });
             /** @type {__VLS_StyleScopedClasses['p-5']} */ ;
             /** @type {__VLS_StyleScopedClasses['space-y-4']} */ ;
-            for (const [field] of __VLS_vFor((__VLS_ctx.selectedTemplate?.fields || []))) {
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    key: (field.key),
-                    ...{ class: "grid grid-cols-1 sm:grid-cols-12 gap-2 items-start" },
-                });
-                /** @type {__VLS_StyleScopedClasses['grid']} */ ;
-                /** @type {__VLS_StyleScopedClasses['grid-cols-1']} */ ;
-                /** @type {__VLS_StyleScopedClasses['sm:grid-cols-12']} */ ;
-                /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-                /** @type {__VLS_StyleScopedClasses['items-start']} */ ;
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "sm:col-span-3" },
-                });
-                /** @type {__VLS_StyleScopedClasses['sm:col-span-3']} */ ;
-                __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
-                    ...{ class: "form-label !mb-0 sm:pt-2" },
-                });
-                /** @type {__VLS_StyleScopedClasses['form-label']} */ ;
-                /** @type {__VLS_StyleScopedClasses['!mb-0']} */ ;
-                /** @type {__VLS_StyleScopedClasses['sm:pt-2']} */ ;
-                (field.label);
-                if (field.required) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-                        ...{ class: "text-red-400 ml-0.5" },
-                    });
-                    /** @type {__VLS_StyleScopedClasses['text-red-400']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['ml-0.5']} */ ;
-                }
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "sm:col-span-9" },
-                });
-                /** @type {__VLS_StyleScopedClasses['sm:col-span-9']} */ ;
-                if (field.options && field.options.length > 0) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.select, __VLS_intrinsics.select)({
-                        value: (__VLS_ctx.draftElements[field.key]),
-                        ...{ class: "form-input text-sm" },
-                    });
-                    /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
-                        value: "",
-                    });
-                    for (const [opt] of __VLS_vFor((field.options))) {
-                        __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
-                            key: (opt),
-                            value: (opt),
-                        });
-                        (opt);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                ...{ class: "flex items-center gap-2 mb-4" },
+            });
+            /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+            /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+            /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+            /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.authStore.isAuthenticated))
+                            return;
+                        if (!(__VLS_ctx.currentView === 'contract-draft'))
+                            return;
+                        if (!(__VLS_ctx.draftStep === 2))
+                            return;
+                        __VLS_ctx.draftInputMode = 'form';
                         // @ts-ignore
-                        [draftStep, draftStep, draftStep, draftStep, selectedTemplate, selectedTemplate, selectedTemplate, draftElements,];
+                        [draftStep, draftStep, draftStep, draftStep, selectedTemplate, selectedTemplate, draftInputMode,];
+                    } },
+                ...{ class: (['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', __VLS_ctx.draftInputMode === 'form' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']) },
+            });
+            /** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+            /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+            /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+            /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+            /** @type {__VLS_StyleScopedClasses['transition-all']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.authStore.isAuthenticated))
+                            return;
+                        if (!(__VLS_ctx.currentView === 'contract-draft'))
+                            return;
+                        if (!(__VLS_ctx.draftStep === 2))
+                            return;
+                        __VLS_ctx.draftInputMode = 'nlu';
+                        // @ts-ignore
+                        [draftInputMode, draftInputMode,];
+                    } },
+                ...{ class: (['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', __VLS_ctx.draftInputMode === 'nlu' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']) },
+            });
+            /** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+            /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+            /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+            /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+            /** @type {__VLS_StyleScopedClasses['transition-all']} */ ;
+            if (__VLS_ctx.draftInputMode === 'nlu') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "space-y-4" },
+                });
+                /** @type {__VLS_StyleScopedClasses['space-y-4']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "bg-blue-50 rounded-lg p-3 text-sm text-blue-700" },
+                });
+                /** @type {__VLS_StyleScopedClasses['bg-blue-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-blue-700']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                    ...{ class: "font-medium" },
+                });
+                /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.textarea, __VLS_intrinsics.textarea)({
+                    value: (__VLS_ctx.draftNluInput),
+                    ...{ class: "w-full h-32 p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none" },
+                    placeholder: "请用自然语言描述您的合同需求...",
+                });
+                /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+                /** @type {__VLS_StyleScopedClasses['h-32']} */ ;
+                /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+                /** @type {__VLS_StyleScopedClasses['border']} */ ;
+                /** @type {__VLS_StyleScopedClasses['border-gray-200']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['focus:ring-2']} */ ;
+                /** @type {__VLS_StyleScopedClasses['focus:ring-teal-500']} */ ;
+                /** @type {__VLS_StyleScopedClasses['focus:border-transparent']} */ ;
+                /** @type {__VLS_StyleScopedClasses['resize-none']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (__VLS_ctx.extractDraftFields) },
+                    disabled: (!__VLS_ctx.draftNluInput.trim() || __VLS_ctx.isExtractingFields),
+                    ...{ class: "px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" },
+                });
+                /** @type {__VLS_StyleScopedClasses['px-4']} */ ;
+                /** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+                /** @type {__VLS_StyleScopedClasses['bg-teal-600']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-white']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['hover:bg-teal-700']} */ ;
+                /** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['disabled:cursor-not-allowed']} */ ;
+                /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+                /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+                /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+                if (__VLS_ctx.isExtractingFields) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.svg, __VLS_intrinsics.svg)({
+                        ...{ class: "animate-spin h-4 w-4" },
+                        viewBox: "0 0 24 24",
+                    });
+                    /** @type {__VLS_StyleScopedClasses['animate-spin']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['h-4']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['w-4']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.circle)({
+                        ...{ class: "opacity-25" },
+                        cx: "12",
+                        cy: "12",
+                        r: "10",
+                        stroke: "currentColor",
+                        'stroke-width': "4",
+                        fill: "none",
+                    });
+                    /** @type {__VLS_StyleScopedClasses['opacity-25']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.path)({
+                        ...{ class: "opacity-75" },
+                        fill: "currentColor",
+                        d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z",
+                    });
+                    /** @type {__VLS_StyleScopedClasses['opacity-75']} */ ;
+                }
+                (__VLS_ctx.isExtractingFields ? '提取中...' : '智能提取');
+                if (Object.keys(__VLS_ctx.draftNluFields).length > 0) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "space-y-3" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['space-y-3']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.h4, __VLS_intrinsics.h4)({
+                        ...{ class: "font-medium text-gray-700" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['text-gray-700']} */ ;
+                    for (const [value, key] of __VLS_vFor((__VLS_ctx.draftNluFields))) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                            key: (key),
+                            ...{ class: "flex items-center gap-2" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                            ...{ class: "text-sm text-gray-500 w-24" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-gray-500']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['w-24']} */ ;
+                        (key);
+                        if (value !== null) {
+                            __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+                                ...{ class: "flex-1 px-2 py-1 border border-gray-200 rounded text-sm" },
+                            });
+                            (__VLS_ctx.draftElements[key]);
+                            /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['border']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['border-gray-200']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        }
+                        else {
+                            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                                ...{ class: "text-sm text-orange-500" },
+                            });
+                            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['text-orange-500']} */ ;
+                        }
+                        // @ts-ignore
+                        [draftInputMode, draftInputMode, draftNluInput, draftNluInput, extractDraftFields, isExtractingFields, isExtractingFields, isExtractingFields, draftNluFields, draftNluFields, draftElements,];
                     }
                 }
-                else if (field.field_type === 'textarea') {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.textarea, __VLS_intrinsics.textarea)({
-                        value: (__VLS_ctx.draftElements[field.key]),
-                        placeholder: (field.placeholder),
-                        rows: "3",
-                        ...{ class: "form-input text-sm resize-none" },
+                if (__VLS_ctx.draftNluQuestions.length > 0) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "bg-orange-50 rounded-lg p-3 space-y-2" },
                     });
-                    /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['resize-none']} */ ;
-                }
-                else {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
-                        type: (field.field_type === 'number' ? 'number' : 'text'),
-                        placeholder: (field.placeholder),
-                        ...{ class: "form-input text-sm" },
+                    /** @type {__VLS_StyleScopedClasses['bg-orange-50']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['space-y-2']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.h4, __VLS_intrinsics.h4)({
+                        ...{ class: "font-medium text-orange-700 text-sm" },
                     });
-                    (__VLS_ctx.draftElements[field.key]);
-                    /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['text-orange-700']} */ ;
                     /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                    for (const [q, i] of __VLS_vFor((__VLS_ctx.draftNluQuestions))) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                            key: (i),
+                            ...{ class: "text-sm text-orange-600" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-orange-600']} */ ;
+                        (i + 1);
+                        (q);
+                        // @ts-ignore
+                        [draftNluQuestions, draftNluQuestions,];
+                    }
                 }
-                // @ts-ignore
-                [draftElements, draftElements,];
+            }
+            else {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+                for (const [field] of __VLS_vFor((__VLS_ctx.selectedTemplate?.fields || []))) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        key: (field.key),
+                        ...{ class: "grid grid-cols-1 sm:grid-cols-12 gap-2 items-start" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['grid']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['grid-cols-1']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['sm:grid-cols-12']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['items-start']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "sm:col-span-3" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['sm:col-span-3']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
+                        ...{ class: "form-label !mb-0 sm:pt-2" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['form-label']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['!mb-0']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['sm:pt-2']} */ ;
+                    (field.label);
+                    if (field.required) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                            ...{ class: "text-red-400 ml-0.5" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['text-red-400']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['ml-0.5']} */ ;
+                    }
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "sm:col-span-9" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['sm:col-span-9']} */ ;
+                    if (field.options && field.options.length > 0) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.select, __VLS_intrinsics.select)({
+                            value: (__VLS_ctx.draftElements[field.key]),
+                            ...{ class: "form-input text-sm" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+                            value: "",
+                        });
+                        for (const [opt] of __VLS_vFor((field.options))) {
+                            __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+                                key: (opt),
+                                value: (opt),
+                            });
+                            (opt);
+                            // @ts-ignore
+                            [selectedTemplate, draftElements,];
+                        }
+                    }
+                    else if (field.field_type === 'textarea') {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.textarea, __VLS_intrinsics.textarea)({
+                            value: (__VLS_ctx.draftElements[field.key]),
+                            placeholder: (field.placeholder),
+                            rows: "3",
+                            ...{ class: "form-input text-sm resize-none" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['resize-none']} */ ;
+                    }
+                    else {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+                            type: (field.field_type === 'number' ? 'number' : 'text'),
+                            placeholder: (field.placeholder),
+                            ...{ class: "form-input text-sm" },
+                        });
+                        (__VLS_ctx.draftElements[field.key]);
+                        /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                    }
+                    // @ts-ignore
+                    [draftElements, draftElements,];
+                }
             }
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "p-4 border-t border-slate-100 flex justify-end space-x-3" },
@@ -10681,81 +10937,282 @@ else {
             });
             /** @type {__VLS_StyleScopedClasses['p-5']} */ ;
             /** @type {__VLS_StyleScopedClasses['space-y-4']} */ ;
-            for (const [field] of __VLS_vFor((__VLS_ctx.selectedDocTemplate?.fields || []))) {
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    key: (field.key),
-                    ...{ class: "grid grid-cols-1 sm:grid-cols-12 gap-2 items-start" },
-                });
-                /** @type {__VLS_StyleScopedClasses['grid']} */ ;
-                /** @type {__VLS_StyleScopedClasses['grid-cols-1']} */ ;
-                /** @type {__VLS_StyleScopedClasses['sm:grid-cols-12']} */ ;
-                /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-                /** @type {__VLS_StyleScopedClasses['items-start']} */ ;
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "sm:col-span-3" },
-                });
-                /** @type {__VLS_StyleScopedClasses['sm:col-span-3']} */ ;
-                __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
-                    ...{ class: "form-label !mb-0 sm:pt-2" },
-                });
-                /** @type {__VLS_StyleScopedClasses['form-label']} */ ;
-                /** @type {__VLS_StyleScopedClasses['!mb-0']} */ ;
-                /** @type {__VLS_StyleScopedClasses['sm:pt-2']} */ ;
-                (field.label);
-                if (field.required) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
-                        ...{ class: "text-red-400 ml-0.5" },
-                    });
-                    /** @type {__VLS_StyleScopedClasses['text-red-400']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['ml-0.5']} */ ;
-                }
-                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
-                    ...{ class: "sm:col-span-9" },
-                });
-                /** @type {__VLS_StyleScopedClasses['sm:col-span-9']} */ ;
-                if (field.options && field.options.length > 0) {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.select, __VLS_intrinsics.select)({
-                        value: (__VLS_ctx.docElements[field.key]),
-                        ...{ class: "form-input text-sm" },
-                    });
-                    /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
-                        value: "",
-                    });
-                    for (const [opt] of __VLS_vFor((field.options))) {
-                        __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
-                            key: (opt),
-                            value: (opt),
-                        });
-                        (opt);
+            __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                ...{ class: "flex items-center gap-2 mb-4" },
+            });
+            /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+            /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+            /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+            /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.authStore.isAuthenticated))
+                            return;
+                        if (!(__VLS_ctx.currentView === 'docgen'))
+                            return;
+                        if (!(__VLS_ctx.docStep === 2))
+                            return;
+                        __VLS_ctx.docInputMode = 'form';
                         // @ts-ignore
-                        [docStep, docStep, docStep, docStep, selectedDocTemplate, selectedDocTemplate, selectedDocTemplate, docElements,];
+                        [docStep, docStep, docStep, docStep, selectedDocTemplate, selectedDocTemplate, docInputMode,];
+                    } },
+                ...{ class: (['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', __VLS_ctx.docInputMode === 'form' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']) },
+            });
+            /** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+            /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+            /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+            /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+            /** @type {__VLS_StyleScopedClasses['transition-all']} */ ;
+            __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.authStore.isAuthenticated))
+                            return;
+                        if (!(__VLS_ctx.currentView === 'docgen'))
+                            return;
+                        if (!(__VLS_ctx.docStep === 2))
+                            return;
+                        __VLS_ctx.docInputMode = 'nlu';
+                        // @ts-ignore
+                        [docInputMode, docInputMode,];
+                    } },
+                ...{ class: (['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', __VLS_ctx.docInputMode === 'nlu' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']) },
+            });
+            /** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+            /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+            /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+            /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+            /** @type {__VLS_StyleScopedClasses['transition-all']} */ ;
+            if (__VLS_ctx.docInputMode === 'nlu') {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "space-y-4" },
+                });
+                /** @type {__VLS_StyleScopedClasses['space-y-4']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                    ...{ class: "bg-blue-50 rounded-lg p-3 text-sm text-blue-700" },
+                });
+                /** @type {__VLS_StyleScopedClasses['bg-blue-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-blue-700']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                    ...{ class: "font-medium" },
+                });
+                /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.textarea, __VLS_intrinsics.textarea)({
+                    value: (__VLS_ctx.docNluInput),
+                    ...{ class: "w-full h-32 p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none" },
+                    placeholder: "请用自然语言描述您的文书需求...",
+                });
+                /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+                /** @type {__VLS_StyleScopedClasses['h-32']} */ ;
+                /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+                /** @type {__VLS_StyleScopedClasses['border']} */ ;
+                /** @type {__VLS_StyleScopedClasses['border-gray-200']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['focus:ring-2']} */ ;
+                /** @type {__VLS_StyleScopedClasses['focus:ring-blue-500']} */ ;
+                /** @type {__VLS_StyleScopedClasses['focus:border-transparent']} */ ;
+                /** @type {__VLS_StyleScopedClasses['resize-none']} */ ;
+                __VLS_asFunctionalElement1(__VLS_intrinsics.button, __VLS_intrinsics.button)({
+                    ...{ onClick: (__VLS_ctx.extractDocFields) },
+                    disabled: (!__VLS_ctx.docNluInput.trim() || __VLS_ctx.isExtractingDocFields),
+                    ...{ class: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2" },
+                });
+                /** @type {__VLS_StyleScopedClasses['px-4']} */ ;
+                /** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+                /** @type {__VLS_StyleScopedClasses['bg-blue-600']} */ ;
+                /** @type {__VLS_StyleScopedClasses['text-white']} */ ;
+                /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                /** @type {__VLS_StyleScopedClasses['hover:bg-blue-700']} */ ;
+                /** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+                /** @type {__VLS_StyleScopedClasses['disabled:cursor-not-allowed']} */ ;
+                /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+                /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+                /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+                if (__VLS_ctx.isExtractingDocFields) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.svg, __VLS_intrinsics.svg)({
+                        ...{ class: "animate-spin h-4 w-4" },
+                        viewBox: "0 0 24 24",
+                    });
+                    /** @type {__VLS_StyleScopedClasses['animate-spin']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['h-4']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['w-4']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.circle)({
+                        ...{ class: "opacity-25" },
+                        cx: "12",
+                        cy: "12",
+                        r: "10",
+                        stroke: "currentColor",
+                        'stroke-width': "4",
+                        fill: "none",
+                    });
+                    /** @type {__VLS_StyleScopedClasses['opacity-25']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.path)({
+                        ...{ class: "opacity-75" },
+                        fill: "currentColor",
+                        d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z",
+                    });
+                    /** @type {__VLS_StyleScopedClasses['opacity-75']} */ ;
+                }
+                (__VLS_ctx.isExtractingDocFields ? '提取中...' : '智能提取');
+                if (Object.keys(__VLS_ctx.docNluFields).length > 0) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "space-y-3" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['space-y-3']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.h4, __VLS_intrinsics.h4)({
+                        ...{ class: "font-medium text-gray-700" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['text-gray-700']} */ ;
+                    for (const [value, key] of __VLS_vFor((__VLS_ctx.docNluFields))) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                            key: (key),
+                            ...{ class: "flex items-center gap-2" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                            ...{ class: "text-sm text-gray-500 w-24" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-gray-500']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['w-24']} */ ;
+                        (key);
+                        if (value !== null) {
+                            __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+                                ...{ class: "flex-1 px-2 py-1 border border-gray-200 rounded text-sm" },
+                            });
+                            (__VLS_ctx.docElements[key]);
+                            /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['border']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['border-gray-200']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        }
+                        else {
+                            __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                                ...{ class: "text-sm text-orange-500" },
+                            });
+                            /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                            /** @type {__VLS_StyleScopedClasses['text-orange-500']} */ ;
+                        }
+                        // @ts-ignore
+                        [docInputMode, docInputMode, docNluInput, docNluInput, extractDocFields, isExtractingDocFields, isExtractingDocFields, isExtractingDocFields, docNluFields, docNluFields, docElements,];
                     }
                 }
-                else if (field.field_type === 'textarea') {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.textarea, __VLS_intrinsics.textarea)({
-                        value: (__VLS_ctx.docElements[field.key]),
-                        placeholder: (field.placeholder),
-                        rows: "3",
-                        ...{ class: "form-input text-sm resize-none" },
+                if (__VLS_ctx.docNluQuestions.length > 0) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "bg-orange-50 rounded-lg p-3 space-y-2" },
                     });
-                    /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-                    /** @type {__VLS_StyleScopedClasses['resize-none']} */ ;
-                }
-                else {
-                    __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
-                        type: (field.field_type === 'number' ? 'number' : 'text'),
-                        placeholder: (field.placeholder),
-                        ...{ class: "form-input text-sm" },
+                    /** @type {__VLS_StyleScopedClasses['bg-orange-50']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['space-y-2']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.h4, __VLS_intrinsics.h4)({
+                        ...{ class: "font-medium text-orange-700 text-sm" },
                     });
-                    (__VLS_ctx.docElements[field.key]);
-                    /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['text-orange-700']} */ ;
                     /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                    for (const [q, i] of __VLS_vFor((__VLS_ctx.docNluQuestions))) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                            key: (i),
+                            ...{ class: "text-sm text-orange-600" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-orange-600']} */ ;
+                        (i + 1);
+                        (q);
+                        // @ts-ignore
+                        [docNluQuestions, docNluQuestions,];
+                    }
                 }
-                // @ts-ignore
-                [docElements, docElements,];
+            }
+            else {
+                __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({});
+                for (const [field] of __VLS_vFor((__VLS_ctx.selectedDocTemplate?.fields || []))) {
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        key: (field.key),
+                        ...{ class: "grid grid-cols-1 sm:grid-cols-12 gap-2 items-start" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['grid']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['grid-cols-1']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['sm:grid-cols-12']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['items-start']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "sm:col-span-3" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['sm:col-span-3']} */ ;
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.label, __VLS_intrinsics.label)({
+                        ...{ class: "form-label !mb-0 sm:pt-2" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['form-label']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['!mb-0']} */ ;
+                    /** @type {__VLS_StyleScopedClasses['sm:pt-2']} */ ;
+                    (field.label);
+                    if (field.required) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.span, __VLS_intrinsics.span)({
+                            ...{ class: "text-red-400 ml-0.5" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['text-red-400']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['ml-0.5']} */ ;
+                    }
+                    __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
+                        ...{ class: "sm:col-span-9" },
+                    });
+                    /** @type {__VLS_StyleScopedClasses['sm:col-span-9']} */ ;
+                    if (field.options && field.options.length > 0) {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.select, __VLS_intrinsics.select)({
+                            value: (__VLS_ctx.docElements[field.key]),
+                            ...{ class: "form-input text-sm" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+                            value: "",
+                        });
+                        for (const [opt] of __VLS_vFor((field.options))) {
+                            __VLS_asFunctionalElement1(__VLS_intrinsics.option, __VLS_intrinsics.option)({
+                                key: (opt),
+                                value: (opt),
+                            });
+                            (opt);
+                            // @ts-ignore
+                            [selectedDocTemplate, docElements,];
+                        }
+                    }
+                    else if (field.field_type === 'textarea') {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.textarea, __VLS_intrinsics.textarea)({
+                            value: (__VLS_ctx.docElements[field.key]),
+                            placeholder: (field.placeholder),
+                            rows: "3",
+                            ...{ class: "form-input text-sm resize-none" },
+                        });
+                        /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['resize-none']} */ ;
+                    }
+                    else {
+                        __VLS_asFunctionalElement1(__VLS_intrinsics.input)({
+                            type: (field.field_type === 'number' ? 'number' : 'text'),
+                            placeholder: (field.placeholder),
+                            ...{ class: "form-input text-sm" },
+                        });
+                        (__VLS_ctx.docElements[field.key]);
+                        /** @type {__VLS_StyleScopedClasses['form-input']} */ ;
+                        /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+                    }
+                    // @ts-ignore
+                    [docElements, docElements,];
+                }
             }
             __VLS_asFunctionalElement1(__VLS_intrinsics.div, __VLS_intrinsics.div)({
                 ...{ class: "p-4 border-t border-slate-100 flex justify-end space-x-3" },

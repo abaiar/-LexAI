@@ -6,8 +6,7 @@ from typing import Dict
 
 from config import settings
 from agents.docgen_templates import DocTemplate, get_doc_template_by_id
-from tools.deli_law_tool import search_law, get_law_detail
-from tools.deli_case_tool import search_case
+from tools.deli_tools import search_law, get_law_detail, search_case
 
 
 DOC_TEMPLATES_LEGACY = {

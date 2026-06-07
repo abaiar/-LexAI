@@ -1,12 +1,30 @@
 import json
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
-from tools.deli_law_tool import search_law, get_law_detail
-from tools.deli_case_tool import search_case
-from tools.law_parser import parse_law_references
+from utils.law_utils import parse_json_result, search_relevant_legal_info
+from tools.deli_tools import search_law, get_law_detail, search_case
+from harness.trace import trace_manager
+from skills.skill_loader import get_skill
+
+
+def _get_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=settings.get_active_model(),
+        openai_api_key=settings.get_active_api_key(),
+        openai_api_base=settings.get_active_base_url(),
+        temperature=0.3,
+    )
+
+
+def _get_system_prompt() -> str:
+    skill = get_skill("contract_review")
+    if skill and skill.system_prompt:
+        return skill.system_prompt
+    return CONTRACT_REVIEW_PROMPT
 
 
 CONTRACT_REVIEW_PROMPT = """你是一位资深合同审查专家。请对以下合同文本进行全面审查，识别风险条款和缺失条款。
@@ -18,16 +36,16 @@ CONTRACT_REVIEW_PROMPT = """你是一位资深合同审查专家。请对以下�
    - 违法条款（违反法律法规的条款）
    - 漏洞条款（可能被恶意利用的条款）
 2. 检测是否缺失以下必要条款：
-   - 保密条款
-   - 违约金条款
-   - 争议解决条款
-   - 不可抗力条款
-   - 知识产权条款
-   - 合同解除条款
+   - 保密条款、违约金条款、争议解决条款、不可抗力条款、知识产权条款、合同解除条款
 3. 为每个风险条款给出具体修改建议，引用相关法律条文作为依据
 4. 给出总体评分（0-100分）
 
-{law_context}
+你可以使用以下工具来检索相关法规和案例：
+- search_law: 搜索相关法律法规
+- get_law_detail: 获取法规全文
+- search_case: 搜索相似案例
+
+请根据合同内容自主决定是否需要调用工具检索法规。如果合同中已明确引用了法律，请精准检索该法律；如果合同内容简单，可能不需要检索所有工具。
 
 请严格按照以下JSON格式输出，不要输出其他内容：
 {{
@@ -48,95 +66,39 @@ CONTRACT_REVIEW_PROMPT = """你是一位资深合同审查专家。请对以下�
 {contract_text}"""
 
 
-def _get_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        model=settings.get_active_model(),
-        openai_api_key=settings.get_active_api_key(),
-        openai_api_base=settings.get_active_base_url(),
-        temperature=0.3,
-    )
-
-
-def _parse_json_result(raw: str) -> dict:
-    cleaned = raw.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    elif cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
-
-    start_idx = cleaned.find("{")
-    end_idx = cleaned.rfind("}")
-    if start_idx != -1 and end_idx != -1:
-        cleaned = cleaned[start_idx:end_idx + 1]
-
-    return json.loads(cleaned)
-
-
-async def _search_relevant_legal_info(contract_text: str) -> str:
-    law_refs = parse_law_references(contract_text)
-    context_parts = []
-
-    search_keywords = law_refs[:3] if law_refs else ["合同法", "民法典合同编"]
-
-    try:
-        law_results = []
-        for keyword in search_keywords:
-            result = await search_law.ainvoke({"keyword": keyword})
-            if result and "不可用" not in result and "未找到" not in result:
-                law_results.append(f"【法规检索 - {keyword}】\n{result}")
-                law_id = _extract_law_id(result)
-                if law_id:
-                    try:
-                        detail = await get_law_detail.ainvoke({"law_id": law_id})
-                        if detail and "不可用" not in detail:
-                            law_results.append(f"【法规详情】\n{detail[:1500]}")
-                    except Exception:
-                        pass
-
-        if law_results:
-            context_parts.append("\n\n".join(law_results))
-    except Exception:
-        pass
-
-    try:
-        case_keywords = law_refs[:2] if law_refs else ["合同纠纷"]
-        for keyword in case_keywords:
-            result = await search_case.ainvoke({"keyword": keyword})
-            if result and "不可用" not in result and "未找到" not in result:
-                context_parts.append(f"【案例检索 - {keyword}】\n{result[:800]}")
-                break
-    except Exception:
-        pass
-
-    if context_parts:
-        return "以下是通过得理API检索到的相关法规和案例，请在审查时参考：\n\n" + "\n\n".join(context_parts)
-    return ""
-
-
-def _extract_law_id(search_result: str) -> str:
-    import re
-    match = re.search(r'lawId:\s*(\S+)', search_result)
-    if match:
-        return match.group(1).strip()
-    return ""
-
-
 async def review_contract(contract_text: str) -> dict:
-    law_context = await _search_relevant_legal_info(contract_text)
+    trace = trace_manager.start_trace(f"contract_review_{id(contract_text)}", "contract_review_agent")
+    trace_manager.add_step(f"contract_review_{id(contract_text)}", "observe", f"审查合同，长度{len(contract_text)}")
 
     llm = _get_llm()
-    prompt = ChatPromptTemplate.from_template(CONTRACT_REVIEW_PROMPT)
-    chain = prompt | llm | StrOutputParser()
+    tools = [search_law, get_law_detail, search_case]
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", _get_system_prompt()),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad"),
+    ])
 
     try:
-        result = await chain.ainvoke({
+        agent = create_tool_calling_agent(llm, tools, prompt)
+        executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            max_iterations=8,
+            handle_parsing_errors=True,
+        )
+
+        result = await executor.ainvoke({
+            "input": f"请审查以下合同文本：\n\n{contract_text}",
             "contract_text": contract_text,
-            "law_context": law_context,
         })
-        parsed = _parse_json_result(result)
+
+        output = result.get("output", "")
+        parsed = parse_json_result(output)
+
+        trace_manager.add_step(f"contract_review_{id(contract_text)}", "output", "审查完成")
+        trace_manager.end_trace(f"contract_review_{id(contract_text)}")
 
         return {
             "risk_items": parsed.get("risk_items", []),
@@ -144,24 +106,38 @@ async def review_contract(contract_text: str) -> dict:
             "summary": parsed.get("summary", "审查完成"),
             "score": parsed.get("score", 70),
         }
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
+        trace_manager.end_trace(f"contract_review_{id(contract_text)}")
         return {
-            "risk_items": [
-                {
-                    "level": "medium",
-                    "clause": "解析异常",
-                    "reason": "AI返回格式异常，请重新审查",
-                    "suggestion": "请重新提交合同进行审查",
-                }
-            ],
+            "risk_items": [{"level": "medium", "clause": "解析异常", "reason": "AI返回格式异常，请重新审查", "suggestion": "请重新提交合同进行审查"}],
             "missing_clauses": [],
             "summary": "审查结果解析失败，请重试",
             "score": 50,
         }
     except Exception as e:
-        return {
-            "risk_items": [],
-            "missing_clauses": [],
-            "summary": f"审查失败: {str(e)}",
-            "score": 0,
-        }
+        # Fallback to Chain mode if agent fails
+        trace_manager.add_step(f"contract_review_{id(contract_text)}", "think", f"Agent模式失败，降级为Chain: {str(e)[:100]}")
+        try:
+            law_context = await search_relevant_legal_info(contract_text, context_label="审查")
+            chain_prompt = ChatPromptTemplate.from_template(CONTRACT_REVIEW_PROMPT)
+            chain = chain_prompt | llm | StrOutputParser()
+            result = await chain.ainvoke({
+                "contract_text": contract_text,
+                "law_context": law_context,
+            })
+            parsed = parse_json_result(result)
+            trace_manager.end_trace(f"contract_review_{id(contract_text)}")
+            return {
+                "risk_items": parsed.get("risk_items", []),
+                "missing_clauses": parsed.get("missing_clauses", []),
+                "summary": parsed.get("summary", "审查完成"),
+                "score": parsed.get("score", 70),
+            }
+        except Exception as chain_err:
+            trace_manager.end_trace(f"contract_review_{id(contract_text)}")
+            return {
+                "risk_items": [],
+                "missing_clauses": [],
+                "summary": f"审查失败: {str(chain_err)}",
+                "score": 0,
+            }

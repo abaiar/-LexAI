@@ -6,8 +6,7 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from config import settings
-from tools.deli_case_tool import search_case
-from tools.deli_law_tool import search_law, get_law_detail
+from tools.deli_tools import search_law, get_law_detail, search_case
 
 
 MARRIAGE_SYSTEM_PROMPT = """你是"小理智法 AI - 婚姻与财产分割助手"，专注于中国婚姻家庭法领域的专业法律咨询。

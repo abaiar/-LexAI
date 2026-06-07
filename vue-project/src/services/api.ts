@@ -280,6 +280,39 @@ export const api = {
     })
   },
 
+  // NLU - 自然语言字段提取
+  async extractFields(userInput: string, templateId: string): Promise<any> {
+    return request('/api/nlu/extract', {
+      method: 'POST',
+      body: JSON.stringify({ user_input: userInput, template_id: templateId }),
+    })
+  },
+
+  async clarifyMissing(extractedFields: string, templateId: string): Promise<any> {
+    return request('/api/nlu/clarify', {
+      method: 'POST',
+      body: JSON.stringify({ extracted_fields: extractedFields, template_id: templateId }),
+    })
+  },
+
+  // 协作审查
+  async collaborativeReview(file?: File, text?: string): Promise<any> {
+    const formData = new FormData()
+    if (file) formData.append('file', file)
+    if (text) formData.append('text', text)
+    const token = localStorage.getItem('access_token')
+    const response = await fetch(`${API_BASE}/api/contract/collaborative-review`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    })
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail?.message || errorData.detail?.detail || '协作审查失败')
+    }
+    return response.json()
+  },
+
   async saveAccountConfig(params: AccountConfigParams): Promise<{ message: string }> {
     return request('/api/account/config', {
       method: 'PUT',

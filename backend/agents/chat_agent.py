@@ -8,8 +8,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from config import settings
 from memory.session_memory import get_or_create_memory, build_messages_from_history
-from tools.deli_case_tool import search_case
-from tools.deli_law_tool import search_law, get_law_detail
+from tools.deli_tools import search_law, get_law_detail, search_case
 
 
 SYSTEM_PROMPT = """你是"小理智法 AI"，一个基于中国法律的专业法律咨询助手。你的工作流程：

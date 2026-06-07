@@ -1,12 +1,13 @@
 import json
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
-from tools.deli_law_tool import search_law, get_law_detail
-from tools.deli_case_tool import search_case
-from tools.law_parser import parse_law_references
+from utils.law_utils import parse_json_result, search_relevant_legal_info
+from tools.deli_tools import search_law, get_law_detail, search_case
+from harness.trace import trace_manager
 
 
 DOC_INTERPRET_PROMPT = """你是一位资深法律文书解读专家，擅长将复杂的法律文书转化为普通人容易理解的语言。请对以下法律文书文本进行全面的智能解读分析。
@@ -14,7 +15,12 @@ DOC_INTERPRET_PROMPT = """你是一位资深法律文书解读专家，擅长将
 法律文书文本：
 {doc_text}
 
-{law_context}
+你可以使用以下工具来检索相关法规和案例：
+- search_law: 搜索相关法律法规
+- get_law_detail: 获取法规全文
+- search_case: 搜索相似案例
+
+请根据文书内容自主决定是否需要调用工具检索法规。
 
 请从以下维度进行解读：
 
@@ -87,86 +93,39 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
-def _parse_json_result(raw: str) -> dict:
-    cleaned = raw.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    elif cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
-
-    start_idx = cleaned.find("{")
-    end_idx = cleaned.rfind("}")
-    if start_idx != -1 and end_idx != -1:
-        cleaned = cleaned[start_idx:end_idx + 1]
-
-    return json.loads(cleaned)
-
-
-async def _search_relevant_legal_info(doc_text: str) -> str:
-    law_refs = parse_law_references(doc_text)
-    context_parts = []
-
-    search_keywords = law_refs[:3] if law_refs else ["民法典", "合同法"]
-
-    try:
-        law_results = []
-        for keyword in search_keywords:
-            result = await search_law.ainvoke({"keyword": keyword})
-            if result and "不可用" not in result and "未找到" not in result:
-                law_results.append(f"【法规检索 - {keyword}】\n{result}")
-                law_id = _extract_law_id(result)
-                if law_id:
-                    try:
-                        detail = await get_law_detail.ainvoke({"law_id": law_id})
-                        if detail and "不可用" not in detail:
-                            law_results.append(f"【法规详情】\n{detail[:1500]}")
-                    except Exception:
-                        pass
-
-        if law_results:
-            context_parts.append("\n\n".join(law_results))
-    except Exception:
-        pass
-
-    try:
-        case_keywords = law_refs[:2] if law_refs else ["合同纠纷"]
-        for keyword in case_keywords:
-            result = await search_case.ainvoke({"keyword": keyword})
-            if result and "不可用" not in result and "未找到" not in result:
-                context_parts.append(f"【案例检索 - {keyword}】\n{result[:800]}")
-                break
-    except Exception:
-        pass
-
-    if context_parts:
-        return "以下是通过得理API检索到的相关法规和案例，请在解读时参考：\n\n" + "\n\n".join(context_parts)
-    return ""
-
-
-def _extract_law_id(search_result: str) -> str:
-    import re
-    match = re.search(r'lawId:\s*(\S+)', search_result)
-    if match:
-        return match.group(1).strip()
-    return ""
-
-
 async def interpret_document(doc_text: str) -> dict:
-    law_context = await _search_relevant_legal_info(doc_text)
+    trace = trace_manager.start_trace(f"doc_interpret_{id(doc_text)}", "doc_interpret_agent")
+    trace_manager.add_step(f"doc_interpret_{id(doc_text)}", "observe", f"解读文书，长度{len(doc_text)}")
 
     llm = _get_llm()
-    prompt = ChatPromptTemplate.from_template(DOC_INTERPRET_PROMPT)
-    chain = prompt | llm | StrOutputParser()
+    tools = [search_law, get_law_detail, search_case]
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", DOC_INTERPRET_PROMPT),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad"),
+    ])
 
     try:
-        result = await chain.ainvoke({
+        agent = create_tool_calling_agent(llm, tools, prompt)
+        executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            max_iterations=6,
+            handle_parsing_errors=True,
+        )
+
+        result = await executor.ainvoke({
+            "input": f"请解读以下法律文书：\n\n{doc_text[:15000]}",
             "doc_text": doc_text[:15000],
-            "law_context": law_context,
         })
-        parsed = _parse_json_result(result)
+
+        output = result.get("output", "")
+        parsed = parse_json_result(output)
+
+        trace_manager.add_step(f"doc_interpret_{id(doc_text)}", "output", "解读完成")
+        trace_manager.end_trace(f"doc_interpret_{id(doc_text)}")
 
         return {
             "summary": parsed.get("summary", ""),
@@ -183,6 +142,7 @@ async def interpret_document(doc_text: str) -> dict:
             "interpretation_score": parsed.get("interpretation_score", 70),
         }
     except json.JSONDecodeError:
+        trace_manager.end_trace(f"doc_interpret_{id(doc_text)}")
         return {
             "summary": "解读结果解析失败，请重试",
             "document_type": "法律文书",
@@ -198,17 +158,48 @@ async def interpret_document(doc_text: str) -> dict:
             "interpretation_score": 50,
         }
     except Exception as e:
-        return {
-            "summary": f"解读失败: {str(e)}",
-            "document_type": "法律文书",
-            "parties": [],
-            "key_clauses": [],
-            "rights_obligations": [],
-            "risk_warnings": [],
-            "key_deadlines": [],
-            "legal_terms": [],
-            "action_suggestions": [],
-            "overall_assessment": f"解读过程出错: {str(e)}",
-            "difficulty_level": "moderate",
-            "interpretation_score": 0,
-        }
+        trace_manager.add_step(f"doc_interpret_{id(doc_text)}", "think", f"Agent模式失败，降级为Chain: {str(e)[:100]}")
+        try:
+            law_context = await search_relevant_legal_info(
+                doc_text,
+                default_law_keywords=["民法典", "合同法"],
+                context_label="解读",
+            )
+            chain_prompt = ChatPromptTemplate.from_template(DOC_INTERPRET_PROMPT)
+            chain = chain_prompt | llm | StrOutputParser()
+            result = await chain.ainvoke({
+                "doc_text": doc_text[:15000],
+                "law_context": law_context,
+            })
+            parsed = parse_json_result(result)
+            trace_manager.end_trace(f"doc_interpret_{id(doc_text)}")
+            return {
+                "summary": parsed.get("summary", ""),
+                "document_type": parsed.get("document_type", "法律文书"),
+                "parties": parsed.get("parties", []),
+                "key_clauses": parsed.get("key_clauses", []),
+                "rights_obligations": parsed.get("rights_obligations", []),
+                "risk_warnings": parsed.get("risk_warnings", []),
+                "key_deadlines": parsed.get("key_deadlines", []),
+                "legal_terms": parsed.get("legal_terms", []),
+                "action_suggestions": parsed.get("action_suggestions", []),
+                "overall_assessment": parsed.get("overall_assessment", ""),
+                "difficulty_level": parsed.get("difficulty_level", "moderate"),
+                "interpretation_score": parsed.get("interpretation_score", 70),
+            }
+        except Exception as chain_err:
+            trace_manager.end_trace(f"doc_interpret_{id(doc_text)}")
+            return {
+                "summary": f"解读失败: {str(chain_err)}",
+                "document_type": "法律文书",
+                "parties": [],
+                "key_clauses": [],
+                "rights_obligations": [],
+                "risk_warnings": [],
+                "key_deadlines": [],
+                "legal_terms": [],
+                "action_suggestions": [],
+                "overall_assessment": f"解读过程出错: {str(chain_err)}",
+                "difficulty_level": "moderate",
+                "interpretation_score": 0,
+            }

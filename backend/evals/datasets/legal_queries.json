@@ -1,0 +1,22 @@
+[
+  {"id": 1, "query": "劳动合同到期不续签有补偿吗", "expected_laws": ["劳动合同法"], "expected_case_type": "劳动争议", "domain": "labor"},
+  {"id": 2, "query": "房屋租赁合同违约金过高怎么办", "expected_laws": ["民法典合同编"], "expected_case_type": "租赁合同纠纷", "domain": "contract"},
+  {"id": 3, "query": "离婚后孩子抚养权怎么判", "expected_laws": ["民法典婚姻家庭编"], "expected_case_type": "抚养权纠纷", "domain": "marriage"},
+  {"id": 4, "query": "公司未缴纳社保如何维权", "expected_laws": ["社会保险法", "劳动合同法"], "expected_case_type": "社保争议", "domain": "labor"},
+  {"id": 5, "query": "买卖合同中交付标的物有瑕疵怎么办", "expected_laws": ["民法典合同编"], "expected_case_type": "买卖合同纠纷", "domain": "contract"},
+  {"id": 6, "query": "工伤认定需要什么条件", "expected_laws": ["工伤保险条例"], "expected_case_type": "工伤认定", "domain": "labor"},
+  {"id": 7, "query": "婚前财产离婚时如何分割", "expected_laws": ["民法典婚姻家庭编"], "expected_case_type": "离婚财产分割", "domain": "marriage"},
+  {"id": 8, "query": "企业数据安全合规要注意什么", "expected_laws": ["数据安全法", "个人信息保护法"], "expected_case_type": "数据安全", "domain": "compliance"},
+  {"id": 9, "query": "竞业限制协议的效力如何", "expected_laws": ["劳动合同法"], "expected_case_type": "竞业限制纠纷", "domain": "labor"},
+  {"id": 10, "query": "借款合同利息上限是多少", "expected_laws": ["民法典合同编"], "expected_case_type": "民间借贷纠纷", "domain": "contract"},
+  {"id": 11, "query": "家暴如何申请人身保护令", "expected_laws": ["反家庭暴力法"], "expected_case_type": "人身保护令", "domain": "marriage"},
+  {"id": 12, "query": "公司章程需要包含哪些内容", "expected_laws": ["公司法"], "expected_case_type": "公司治理", "domain": "compliance"},
+  {"id": 13, "query": "加班费计算标准是什么", "expected_laws": ["劳动法"], "expected_case_type": "加班费纠纷", "domain": "labor"},
+  {"id": 14, "query": "合同中的不可抗力条款怎么写", "expected_laws": ["民法典合同编"], "expected_case_type": "合同纠纷", "domain": "contract"},
+  {"id": 15, "query": "彩礼什么情况下需要返还", "expected_laws": ["民法典婚姻家庭编"], "expected_case_type": "彩礼纠纷", "domain": "marriage"},
+  {"id": 16, "query": "知识产权侵权如何赔偿", "expected_laws": ["专利法", "商标法", "著作权法"], "expected_case_type": "知识产权侵权", "domain": "compliance"},
+  {"id": 17, "query": "试用期被辞退有赔偿吗", "expected_laws": ["劳动合同法"], "expected_case_type": "违法辞退", "domain": "labor"},
+  {"id": 18, "query": "房屋买卖合同无效的情形有哪些", "expected_laws": ["民法典合同编"], "expected_case_type": "房屋买卖纠纷", "domain": "contract"},
+  {"id": 19, "query": "遗嘱继承和法定继承哪个优先", "expected_laws": ["民法典继承编"], "expected_case_type": "继承纠纷", "domain": "marriage"},
+  {"id": 20, "query": "反垄断合规要点有哪些", "expected_laws": ["反垄断法"], "expected_case_type": "反垄断", "domain": "compliance"}
+]

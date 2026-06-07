@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from models.request_models import ChatRequest
-from agents.chat_agent import stream_chat
+from agents.legal_agent import stream_legal_chat
 
 router = APIRouter(prefix="/api/chat", tags=["多轮法律咨询"])
 
@@ -11,10 +11,11 @@ router = APIRouter(prefix="/api/chat", tags=["多轮法律咨询"])
 @router.post("/send")
 async def chat_send(req: ChatRequest):
     async def event_generator():
-        async for chunk in stream_chat(
+        async for chunk in stream_legal_chat(
             message=req.message,
             session_id=req.session_id,
             history=[h.model_dump() for h in req.history],
+            skill_id="legal_consultation",
         ):
             data = json.dumps(chunk, ensure_ascii=False)
             yield f"data: {data}\n\n"

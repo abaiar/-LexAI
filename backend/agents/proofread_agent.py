@@ -1,11 +1,13 @@
 import json
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 
 from config import settings
-from tools.deli_law_tool import search_law, get_law_detail
-from tools.deli_case_tool import search_case
+from utils.law_utils import parse_json_result, search_relevant_legal_info
+from tools.deli_tools import search_law, get_law_detail, search_case
+from harness.trace import trace_manager
 
 
 PROOFREAD_PROMPT = """你是一位专业的中文文档校对专家，擅长识别和修正各类文档中的语言错误。请对以下文档文本进行全面的校对检查，识别所有语法错误、拼写错误、标点符号使用不当、语句不通顺等问题。
@@ -13,7 +15,12 @@ PROOFREAD_PROMPT = """你是一位专业的中文文档校对专家，擅长识�
 文档文本：
 {text}
 
-{law_context}
+你可以使用以下工具来检索相关法规和案例：
+- search_law: 搜索相关法律法规
+- get_law_detail: 获取法规全文
+- search_case: 搜索相似案例
+
+请根据文档内容自主决定是否需要调用工具检索法规，主要用于校对法律术语的准确性。
 
 请从以下维度进行校对：
 1. 语法错误：主谓不一致、语序不当、成分残缺或多余等
@@ -69,83 +76,36 @@ def _get_llm() -> ChatOpenAI:
     )
 
 
-def _parse_json_result(raw: str) -> dict:
-    cleaned = raw.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned[7:]
-    elif cleaned.startswith("```"):
-        cleaned = cleaned[3:]
-    if cleaned.endswith("```"):
-        cleaned = cleaned[:-3]
-    cleaned = cleaned.strip()
-
-    start_idx = cleaned.find("{")
-    end_idx = cleaned.rfind("}")
-    if start_idx != -1 and end_idx != -1:
-        cleaned = cleaned[start_idx:end_idx + 1]
-
-    return json.loads(cleaned)
-
-
-async def _search_law_terms_for_proofread(text: str) -> str:
-    from tools.law_parser import parse_law_references
-    law_refs = parse_law_references(text)
-
-    if not law_refs:
-        return ""
-
-    context_parts = []
-
-    for keyword in law_refs[:2]:
-        try:
-            result = await search_law.ainvoke({"keyword": keyword})
-            if result and "不可用" not in result and "未找到" not in result:
-                context_parts.append(f"【法规检索 - {keyword}】\n{result}")
-                law_id = _extract_law_id(result)
-                if law_id:
-                    try:
-                        detail = await get_law_detail.ainvoke({"law_id": law_id})
-                        if detail and "不可用" not in detail:
-                            context_parts.append(f"【法规详情】\n{detail[:1500]}")
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-    for keyword in law_refs[:1]:
-        try:
-            result = await search_case.ainvoke({"keyword": keyword})
-            if result and "不可用" not in result and "未找到" not in result:
-                context_parts.append(f"【案例检索 - {keyword}】\n{result[:800]}")
-        except Exception:
-            pass
-
-    if context_parts:
-        return "以下是通过得理API检索到的相关法规和案例，请在校对法律术语时参考：\n\n" + "\n\n".join(context_parts)
-    return ""
-
-
-def _extract_law_id(search_result: str) -> str:
-    import re
-    match = re.search(r'lawId:\s*(\S+)', search_result)
-    if match:
-        return match.group(1).strip()
-    return ""
-
-
 async def proofread_text(text: str) -> dict:
-    law_context = await _search_law_terms_for_proofread(text)
+    trace = trace_manager.start_trace(f"proofread_{id(text)}", "proofread_agent")
+    trace_manager.add_step(f"proofread_{id(text)}", "observe", f"校对文本，长度{len(text)}")
 
     llm = _get_llm()
-    prompt = ChatPromptTemplate.from_template(PROOFREAD_PROMPT)
-    chain = prompt | llm | StrOutputParser()
+    tools = [search_law, get_law_detail, search_case]
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", PROOFREAD_PROMPT),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad"),
+    ])
 
     try:
-        result = await chain.ainvoke({
+        agent = create_tool_calling_agent(llm, tools, prompt)
+        executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            verbose=True,
+            max_iterations=4,
+            handle_parsing_errors=True,
+        )
+
+        result = await executor.ainvoke({
+            "input": f"请校对以下文档：\n\n{text[:10000]}",
             "text": text[:10000],
-            "law_context": law_context,
         })
-        parsed = _parse_json_result(result)
+
+        output = result.get("output", "")
+        parsed = parse_json_result(output)
 
         errors = parsed.get("errors", [])
         summary = parsed.get("summary", {})
@@ -177,11 +137,15 @@ async def proofread_text(text: str) -> dict:
                 "recommendation": "请仔细审查所有标注的错误",
             }
 
+        trace_manager.add_step(f"proofread_{id(text)}", "output", "校对完成")
+        trace_manager.end_trace(f"proofread_{id(text)}")
+
         return {
             "errors": errors,
             "summary": summary,
         }
     except json.JSONDecodeError:
+        trace_manager.end_trace(f"proofread_{id(text)}")
         return {
             "errors": [],
             "summary": {
@@ -200,20 +164,44 @@ async def proofread_text(text: str) -> dict:
             },
         }
     except Exception as e:
-        return {
-            "errors": [],
-            "summary": {
-                "total_errors": 0,
-                "grammar_count": 0,
-                "spelling_count": 0,
-                "punctuation_count": 0,
-                "fluency_count": 0,
-                "wording_count": 0,
-                "high_severity_count": 0,
-                "medium_severity_count": 0,
-                "low_severity_count": 0,
-                "overall_quality": "good",
-                "corrected_text": text,
-                "recommendation": f"校对失败: {str(e)}",
-            },
-        }
+        trace_manager.add_step(f"proofread_{id(text)}", "think", f"Agent模式失败，降级为Chain: {str(e)[:100]}")
+        try:
+            law_context = await search_relevant_legal_info(
+                text,
+                default_law_keywords=["民法典"],
+                default_case_keyword="合同纠纷",
+                context_label="校对",
+            )
+            chain_prompt = ChatPromptTemplate.from_template(PROOFREAD_PROMPT)
+            chain = chain_prompt | llm | StrOutputParser()
+            result = await chain.ainvoke({
+                "text": text[:10000],
+                "law_context": law_context,
+            })
+            parsed = parse_json_result(result)
+            errors = parsed.get("errors", [])
+            summary = parsed.get("summary", {})
+            trace_manager.end_trace(f"proofread_{id(text)}")
+            return {
+                "errors": errors,
+                "summary": summary,
+            }
+        except Exception as chain_err:
+            trace_manager.end_trace(f"proofread_{id(text)}")
+            return {
+                "errors": [],
+                "summary": {
+                    "total_errors": 0,
+                    "grammar_count": 0,
+                    "spelling_count": 0,
+                    "punctuation_count": 0,
+                    "fluency_count": 0,
+                    "wording_count": 0,
+                    "high_severity_count": 0,
+                    "medium_severity_count": 0,
+                    "low_severity_count": 0,
+                    "overall_quality": "good",
+                    "corrected_text": text,
+                    "recommendation": f"校对失败: {str(chain_err)}",
+                },
+            }

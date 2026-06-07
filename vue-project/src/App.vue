@@ -1178,6 +1178,55 @@
                   </div>
                 </div>
                 <div class="p-5 space-y-4">
+                  <!-- 输入模式切换 -->
+                  <div class="flex items-center gap-2 mb-4">
+                    <button @click="draftInputMode = 'form'"
+                      :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', draftInputMode === 'form' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                      表单模式
+                    </button>
+                    <button @click="draftInputMode = 'nlu'"
+                      :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', draftInputMode === 'nlu' ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                      自然语言模式
+                    </button>
+                  </div>
+
+                  <!-- 自然语言输入 -->
+                  <div v-if="draftInputMode === 'nlu'" class="space-y-4">
+                    <div class="bg-blue-50 rounded-lg p-3 text-sm text-blue-700">
+                      <span class="font-medium">提示：</span>用自然语言描述您的合同需求，系统将自动提取关键信息。例如："我和张三要签一份房屋租赁合同，月租金5000元，租期2年，押一付三"
+                    </div>
+                    <textarea v-model="draftNluInput"
+                      class="w-full h-32 p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
+                      placeholder="请用自然语言描述您的合同需求..."></textarea>
+                    <button @click="extractDraftFields"
+                      :disabled="!draftNluInput.trim() || isExtractingFields"
+                      class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                      <svg v-if="isExtractingFields" class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      {{ isExtractingFields ? '提取中...' : '智能提取' }}
+                    </button>
+
+                    <!-- 提取结果 -->
+                    <div v-if="Object.keys(draftNluFields).length > 0" class="space-y-3">
+                      <h4 class="font-medium text-gray-700">提取结果</h4>
+                      <div v-for="(value, key) in draftNluFields" :key="key" class="flex items-center gap-2">
+                        <span class="text-sm text-gray-500 w-24">{{ key }}:</span>
+                        <input v-if="value !== null" v-model="draftElements[key]"
+                          class="flex-1 px-2 py-1 border border-gray-200 rounded text-sm" />
+                        <span v-else class="text-sm text-orange-500">未提取到</span>
+                      </div>
+                    </div>
+
+                    <!-- 缺失字段追问 -->
+                    <div v-if="draftNluQuestions.length > 0" class="bg-orange-50 rounded-lg p-3 space-y-2">
+                      <h4 class="font-medium text-orange-700 text-sm">以下信息缺失，请补充：</h4>
+                      <div v-for="(q, i) in draftNluQuestions" :key="i" class="text-sm text-orange-600">
+                        {{ i + 1 }}. {{ q }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 原有表单模式 -->
+                  <div v-else>
                   <div v-for="field in selectedTemplate?.fields || []" :key="field.key" class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
                     <div class="sm:col-span-3">
                       <label class="form-label !mb-0 sm:pt-2">{{ field.label }}<span v-if="field.required" class="text-red-400 ml-0.5">*</span></label>
@@ -1190,6 +1239,7 @@
                       <textarea v-else-if="field.field_type === 'textarea'" v-model="draftElements[field.key]" :placeholder="field.placeholder" rows="3" class="form-input text-sm resize-none"></textarea>
                       <input v-else :type="field.field_type === 'number' ? 'number' : 'text'" v-model="draftElements[field.key]" :placeholder="field.placeholder" class="form-input text-sm" />
                     </div>
+                  </div>
                   </div>
                 </div>
                 <div class="p-4 border-t border-slate-100 flex justify-end space-x-3">
@@ -1532,6 +1582,55 @@
                   </div>
                 </div>
                 <div class="p-5 space-y-4">
+                  <!-- 输入模式切换 -->
+                  <div class="flex items-center gap-2 mb-4">
+                    <button @click="docInputMode = 'form'"
+                      :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', docInputMode === 'form' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                      表单模式
+                    </button>
+                    <button @click="docInputMode = 'nlu'"
+                      :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-all', docInputMode === 'nlu' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200']">
+                      自然语言模式
+                    </button>
+                  </div>
+
+                  <!-- 自然语言输入 -->
+                  <div v-if="docInputMode === 'nlu'" class="space-y-4">
+                    <div class="bg-blue-50 rounded-lg p-3 text-sm text-blue-700">
+                      <span class="font-medium">提示：</span>用自然语言描述您的文书需求，系统将自动提取关键信息。例如："我要起诉张三欠款10万元，2024年1月借的，约定一年内归还，至今未还"
+                    </div>
+                    <textarea v-model="docNluInput"
+                      class="w-full h-32 p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      placeholder="请用自然语言描述您的文书需求..."></textarea>
+                    <button @click="extractDocFields"
+                      :disabled="!docNluInput.trim() || isExtractingDocFields"
+                      class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                      <svg v-if="isExtractingDocFields" class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      {{ isExtractingDocFields ? '提取中...' : '智能提取' }}
+                    </button>
+
+                    <!-- 提取结果 -->
+                    <div v-if="Object.keys(docNluFields).length > 0" class="space-y-3">
+                      <h4 class="font-medium text-gray-700">提取结果</h4>
+                      <div v-for="(value, key) in docNluFields" :key="key" class="flex items-center gap-2">
+                        <span class="text-sm text-gray-500 w-24">{{ key }}:</span>
+                        <input v-if="value !== null" v-model="docElements[key]"
+                          class="flex-1 px-2 py-1 border border-gray-200 rounded text-sm" />
+                        <span v-else class="text-sm text-orange-500">未提取到</span>
+                      </div>
+                    </div>
+
+                    <!-- 缺失字段追问 -->
+                    <div v-if="docNluQuestions.length > 0" class="bg-orange-50 rounded-lg p-3 space-y-2">
+                      <h4 class="font-medium text-orange-700 text-sm">以下信息缺失，请补充：</h4>
+                      <div v-for="(q, i) in docNluQuestions" :key="i" class="text-sm text-orange-600">
+                        {{ i + 1 }}. {{ q }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 原有表单模式 -->
+                  <div v-else>
                   <div v-for="field in selectedDocTemplate?.fields || []" :key="field.key" class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
                     <div class="sm:col-span-3">
                       <label class="form-label !mb-0 sm:pt-2">{{ field.label }}<span v-if="field.required" class="text-red-400 ml-0.5">*</span></label>
@@ -1544,6 +1643,7 @@
                       <textarea v-else-if="field.field_type === 'textarea'" v-model="docElements[field.key]" :placeholder="field.placeholder" rows="3" class="form-input text-sm resize-none"></textarea>
                       <input v-else :type="field.field_type === 'number' ? 'number' : 'text'" v-model="docElements[field.key]" :placeholder="field.placeholder" class="form-input text-sm" />
                     </div>
+                  </div>
                   </div>
                 </div>
                 <div class="p-4 border-t border-slate-100 flex justify-end space-x-3">
@@ -2496,6 +2596,11 @@ const allTemplatesFlat = ref([])
 const draftSearchKeyword = ref('')
 const draftSearchResults = ref([])
 const isSearchingTemplates = ref(false)
+const draftInputMode = ref('form')
+const draftNluInput = ref('')
+const draftNluFields = ref({})
+const draftNluQuestions = ref([])
+const isExtractingFields = ref(false)
 let draftSearchTimer = null
 const newTemplateForm = ref({
   name: '',
@@ -2642,6 +2747,28 @@ function selectDraftTemplate(template) {
   generatedContractText.value = ''
   contractQualityResult.value = null
   draftStep.value = 2
+}
+
+async function extractDraftFields() {
+  if (!selectedTemplate.value || !draftNluInput.value.trim()) return
+  isExtractingFields.value = true
+  try {
+    const result = await api.extractFields(draftNluInput.value, selectedTemplate.value.id)
+    if (result.fields) {
+      draftNluFields.value = result.fields
+      for (const [key, value] of Object.entries(result.fields)) {
+        if (value && value !== null) {
+          draftElements.value[key] = value
+        }
+      }
+      const clarifyResult = await api.clarifyMissing(JSON.stringify(result.fields), selectedTemplate.value.id)
+      draftNluQuestions.value = clarifyResult.questions || []
+    }
+  } catch (err) {
+    console.error('字段提取失败:', err)
+  } finally {
+    isExtractingFields.value = false
+  }
 }
 
 async function handleGenerateOutline() {
@@ -2872,6 +2999,11 @@ const docUsageFilter = ref('')
 const showDocPreviewModal = ref(false)
 const docPreviewTemplate = ref(null)
 const isLoadingDocCategories = ref(false)
+const docInputMode = ref('form')
+const docNluInput = ref('')
+const docNluFields = ref({})
+const docNluQuestions = ref([])
+const isExtractingDocFields = ref(false)
 
 const docCategoryGradients = {
   litigation: 'linear-gradient(135deg, #ef4444, #dc2626)',
@@ -3064,6 +3196,28 @@ function selectDocTemplate(template) {
   if (docRecentUsed.value.length > 10) docRecentUsed.value = docRecentUsed.value.slice(0, 10)
   localStorage.setItem('docRecentUsed', JSON.stringify(docRecentUsed.value))
   docStep.value = 2
+}
+
+async function extractDocFields() {
+  if (!selectedDocTemplate.value || !docNluInput.value.trim()) return
+  isExtractingDocFields.value = true
+  try {
+    const result = await api.extractFields(docNluInput.value, selectedDocTemplate.value.id)
+    if (result.fields) {
+      docNluFields.value = result.fields
+      for (const [key, value] of Object.entries(result.fields)) {
+        if (value && value !== null) {
+          docElements.value[key] = value
+        }
+      }
+      const clarifyResult = await api.clarifyMissing(JSON.stringify(result.fields), selectedDocTemplate.value.id)
+      docNluQuestions.value = clarifyResult.questions || []
+    }
+  } catch (err) {
+    console.error('字段提取失败:', err)
+  } finally {
+    isExtractingDocFields.value = false
+  }
 }
 
 async function handleGenerateDocOutline() {

@@ -179,6 +179,38 @@ export const api = {
             method: 'DELETE',
         });
     },
+    // NLU - 自然语言字段提取
+    async extractFields(userInput, templateId) {
+        return request('/api/nlu/extract', {
+            method: 'POST',
+            body: JSON.stringify({ user_input: userInput, template_id: templateId }),
+        });
+    },
+    async clarifyMissing(extractedFields, templateId) {
+        return request('/api/nlu/clarify', {
+            method: 'POST',
+            body: JSON.stringify({ extracted_fields: extractedFields, template_id: templateId }),
+        });
+    },
+    // 协作审查
+    async collaborativeReview(file, text) {
+        const formData = new FormData();
+        if (file)
+            formData.append('file', file);
+        if (text)
+            formData.append('text', text);
+        const token = localStorage.getItem('access_token');
+        const response = await fetch(`${API_BASE}/api/contract/collaborative-review`, {
+            method: 'POST',
+            headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: formData,
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail?.message || errorData.detail?.detail || '协作审查失败');
+        }
+        return response.json();
+    },
     async saveAccountConfig(params) {
         return request('/api/account/config', {
             method: 'PUT',

@@ -99,3 +99,36 @@ async def delete_case(case_id: str):
         )
     del _cases_db[case_id]
     return {"message": "删除成功", "case_id": case_id}
+
+
+@router.post("/{case_id}/search-similar", responses={404: {"model": ErrorResponse}})
+async def search_similar_cases(case_id: str):
+    """根据案件描述搜索相似案例"""
+    case = _cases_db.get(case_id)
+    if not case:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": 404, "message": "案件不存在", "detail": f"未找到ID为{case_id}的案件"},
+        )
+
+    description = case.get("description", "") or case.get("title", "")
+    if not description:
+        return {"case_id": case_id, "similar_cases": "案件描述为空，无法搜索相似案例"}
+
+    try:
+        from tools.deli_tools import search_case
+        result = await search_case.ainvoke({"keyword": description})
+        return {"case_id": case_id, "similar_cases": result}
+    except Exception as e:
+        return {"case_id": case_id, "similar_cases": f"搜索失败: {str(e)}"}
+
+
+@router.post("/search-cases")
+async def search_cases_api(keyword: str):
+    """搜索法律案例"""
+    try:
+        from tools.deli_tools import search_case
+        result = await search_case.ainvoke({"keyword": keyword})
+        return {"keyword": keyword, "results": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"code": 500, "message": "案例搜索失败", "detail": str(e)})

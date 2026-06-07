@@ -1,0 +1,255 @@
+{
+  "eval_type": "legal_queries",
+  "timestamp": "2026-06-07T13:19:50.150716",
+  "total_queries": 20,
+  "metrics": {
+    "avg_law_recall": 0.0,
+    "citation_rate": 0.0
+  },
+  "results": [
+    {
+      "id": 1,
+      "query": "劳动合同到期不续签有补偿吗",
+      "domain": "labor",
+      "expected_laws": [
+        "劳动合同法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 2,
+      "query": "房屋租赁合同违约金过高怎么办",
+      "domain": "contract",
+      "expected_laws": [
+        "民法典合同编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 3,
+      "query": "离婚后孩子抚养权怎么判",
+      "domain": "marriage",
+      "expected_laws": [
+        "民法典婚姻家庭编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 4,
+      "query": "公司未缴纳社保如何维权",
+      "domain": "labor",
+      "expected_laws": [
+        "社会保险法",
+        "劳动合同法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 5,
+      "query": "买卖合同中交付标的物有瑕疵怎么办",
+      "domain": "contract",
+      "expected_laws": [
+        "民法典合同编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 6,
+      "query": "工伤认定需要什么条件",
+      "domain": "labor",
+      "expected_laws": [
+        "工伤保险条例"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 7,
+      "query": "婚前财产离婚时如何分割",
+      "domain": "marriage",
+      "expected_laws": [
+        "民法典婚姻家庭编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 8,
+      "query": "企业数据安全合规要注意什么",
+      "domain": "compliance",
+      "expected_laws": [
+        "数据安全法",
+        "个人信息保护法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 9,
+      "query": "竞业限制协议的效力如何",
+      "domain": "labor",
+      "expected_laws": [
+        "劳动合同法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 10,
+      "query": "借款合同利息上限是多少",
+      "domain": "contract",
+      "expected_laws": [
+        "民法典合同编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 11,
+      "query": "家暴如何申请人身保护令",
+      "domain": "marriage",
+      "expected_laws": [
+        "反家庭暴力法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 12,
+      "query": "公司章程需要包含哪些内容",
+      "domain": "compliance",
+      "expected_laws": [
+        "公司法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 13,
+      "query": "加班费计算标准是什么",
+      "domain": "labor",
+      "expected_laws": [
+        "劳动法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 14,
+      "query": "合同中的不可抗力条款怎么写",
+      "domain": "contract",
+      "expected_laws": [
+        "民法典合同编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 15,
+      "query": "彩礼什么情况下需要返还",
+      "domain": "marriage",
+      "expected_laws": [
+        "民法典婚姻家庭编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 16,
+      "query": "知识产权侵权如何赔偿",
+      "domain": "compliance",
+      "expected_laws": [
+        "专利法",
+        "商标法",
+        "著作权法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 17,
+      "query": "试用期被辞退有赔偿吗",
+      "domain": "labor",
+      "expected_laws": [
+        "劳动合同法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 18,
+      "query": "房屋买卖合同无效的情形有哪些",
+      "domain": "contract",
+      "expected_laws": [
+        "民法典合同编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 19,
+      "query": "遗嘱继承和法定继承哪个优先",
+      "domain": "marriage",
+      "expected_laws": [
+        "民法典继承编"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    },
+    {
+      "id": 20,
+      "query": "反垄断合规要点有哪些",
+      "domain": "compliance",
+      "expected_laws": [
+        "反垄断法"
+      ],
+      "retrieved_laws": [],
+      "law_recall": 0.0,
+      "has_citation": false,
+      "error": null
+    }
+  ]
+}
