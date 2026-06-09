@@ -96,7 +96,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
     const detail = errorData.detail || {}
-    throw new Error('Request failed (${response.status})')
+    throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
   }
 
   return response.json()
@@ -199,7 +199,7 @@ export const api = {
         body: formData,
       }).then(r => r.json())
     }
-    throw new Error('Please provide a file or text')
+    throw new Error('请提供文件或文本')
   },
 
   async generateDocument(params: DocGenParams): Promise<{ document_text: string; template_used: string }> {
@@ -280,7 +280,7 @@ export const api = {
     })
   },
 
-  // NLU - Natural Language Field Extraction
+  // NLU - 自然语言字段提取
   async extractFields(userInput: string, templateId: string): Promise<any> {
     return request('/api/nlu/extract', {
       method: 'POST',
@@ -295,7 +295,7 @@ export const api = {
     })
   },
 
-  // Collaborative Review
+  // 协作审查
   async collaborativeReview(file?: File, text?: string): Promise<any> {
     const formData = new FormData()
     if (file) formData.append('file', file)
@@ -308,7 +308,7 @@ export const api = {
     })
     if (!response.ok) {
       const errorData = await response.json()
-      throw new Error(errorData.detail?.message || errorData.detail?.detail || 'Collaborative review failed')
+      throw new Error(errorData.detail?.message || errorData.detail?.detail || '协作审查失败')
     }
     return response.json()
   },
@@ -415,7 +415,7 @@ export const api = {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       const detail = errorData.detail || {}
-      throw new Error('Request failed (${response.status})')
+      throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
     }
 
     return response.json()
@@ -454,7 +454,7 @@ export const api = {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       const detail = errorData.detail || {}
-      throw new Error('Request failed (${response.status})')
+      throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
     }
 
     return response.json()
@@ -462,24 +462,23 @@ export const api = {
 
   async proofreadTextDirect(text: string): Promise<any> {
     const token = localStorage.getItem('access_token')
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
 
-    const formData = new FormData()
-    formData.append('text', text)
-
     const response = await fetch(`${API_BASE}/api/proofread/check-text`, {
       method: 'POST',
       headers,
-      body: formData,
+      body: JSON.stringify({ text }),
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       const detail = errorData.detail || {}
-      throw new Error('Request failed (${response.status})')
+      throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
     }
 
     return response.json()
@@ -517,7 +516,7 @@ export const api = {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         const detail = errorData.detail || {}
-        throw new Error('Request failed (${response.status})')
+        throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
       }
       return response.json()
     } else if (text) {
@@ -531,11 +530,11 @@ export const api = {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         const detail = errorData.detail || {}
-        throw new Error('Request failed (${response.status})')
+        throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
       }
       return response.json()
     }
-    throw new Error('Please provide a file or text')
+    throw new Error('请提供文件或文本')
   },
 
   async interpretTextDirect(text: string): Promise<any> {
@@ -557,7 +556,7 @@ export const api = {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       const detail = errorData.detail || {}
-      throw new Error('Request failed (${response.status})')
+      throw new Error(detail.message || detail.detail || `请求失败 (${response.status})`)
     }
 
     return response.json()
@@ -575,5 +574,20 @@ export const api = {
     return request(`/api/doc-interpret/history/${recordId}`, {
       method: 'DELETE',
     })
+  },
+
+  // Trace 追踪
+  async getRecentTraces(): Promise<any> {
+    return request('/api/trace/recent')
+  },
+
+  // Deli API 统计
+  async getDeliStats(): Promise<any> {
+    return request('/api/trace/deli/stats')
+  },
+
+  // 搜索相似案例
+  async searchSimilarCases(caseId: string): Promise<any> {
+    return request(`/api/cases/${caseId}/search-similar`, { method: 'POST' })
   },
 }

@@ -1,6 +1,6 @@
 import uuid
 import time
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Body
 
 from agents.proofread_agent import proofread_text
 from models.response_models import (
@@ -70,7 +70,7 @@ async def proofread_document(file: UploadFile = File(...)):
     response_model=ProofreadResponse,
     responses={400: {"model": ErrorResponse}},
 )
-async def proofread_text_direct(text: str):
+async def proofread_text_direct(text: str = Body(..., embed=True)):
     if not text or len(text.strip()) < 10:
         raise HTTPException(
             status_code=400,

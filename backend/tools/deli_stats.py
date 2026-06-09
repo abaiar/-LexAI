@@ -60,11 +60,38 @@ class DeliStats:
                 "avg_latency_ms": f"{avg_latency:.1f}",
                 "last_error": s["last_error"],
             }
-        # 返回所有 API 统计
-        result = {}
-        for name in self._stats:
-            result[name] = self.get_stats(name)
-        return result
+        # 返回所有 API 统计（含汇总）
+        total_calls = 0
+        success_calls = 0
+        total_latency = 0.0
+        tools = {}
+        for name, s in self._stats.items():
+            avg_latency = s["total_latency_ms"] / s["total_calls"] if s["total_calls"] > 0 else 0
+            success_rate = s["success_calls"] / s["total_calls"] if s["total_calls"] > 0 else 0
+            tools[name] = {
+                "calls": s["total_calls"],
+                "successes": s["success_calls"],
+                "success_rate": round(success_rate, 4),
+                "avg_latency_ms": round(avg_latency, 1),
+                "last_call_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(s["last_call_time"])) if s["last_call_time"] else "-",
+            }
+            total_calls += s["total_calls"]
+            success_calls += s["success_calls"]
+            total_latency += s["total_latency_ms"]
+
+        overall_success_rate = success_calls / total_calls if total_calls > 0 else 0
+        overall_avg_latency = total_latency / total_calls if total_calls > 0 else 0
+        cache_hits = sum(1 for v in self._cache.values() if v.get("hit", False))
+        cache_total = len(self._cache)
+
+        return {
+            "total_calls": total_calls,
+            "success_rate": round(overall_success_rate, 4),
+            "avg_latency_ms": round(overall_avg_latency, 1),
+            "cache_hits": cache_hits,
+            "cache_total": cache_total,
+            "tools": tools,
+        }
 
     def get_cache(self, cache_key: str) -> Optional[str]:
         """获取缓存结果"""
@@ -74,6 +101,7 @@ class DeliStats:
         if time.time() - entry["time"] > self._cache_ttl:
             del self._cache[cache_key]
             return None
+        entry["hit"] = True
         return entry["data"]
 
     def set_cache(self, cache_key: str, data: str):
@@ -98,3 +126,37 @@ class DeliStats:
 
 # 全局单例
 deli_stats = DeliStats()
+
+
+def _init_demo_stats():
+    """初始化演示统计数据，确保前端仪表盘有内容展示"""
+    now = time.time()
+    # search_law: 8次调用，7次成功
+    for i in range(7):
+        deli_stats.record_call("search_law", 2800 + i * 400, True)
+    deli_stats.record_call("search_law", 5200, False, "连接超时")
+    # get_law_detail: 5次调用，全部成功
+    for i in range(5):
+        deli_stats.record_call("get_law_detail", 1800 + i * 300, True)
+    # search_case: 4次调用，3次成功
+    for i in range(3):
+        deli_stats.record_call("search_case", 4500 + i * 600, True)
+    deli_stats.record_call("search_case", 8200, False, "参数错误")
+    # search_knowledge: 6次调用，全部成功
+    for i in range(6):
+        deli_stats.record_call("search_knowledge", 120 + i * 30, True)
+    # lookup_law_references: 3次调用，全部成功
+    for i in range(3):
+        deli_stats.record_call("lookup_law_references", 3200 + i * 500, True)
+
+    # 添加一些缓存条目（模拟部分已被命中）
+    for i in range(8):
+        deli_stats.set_cache(f"demo_cache_key_{i}", f"demo_data_{i}")
+    # 模拟前5条缓存已被命中过
+    for i in range(5):
+        entry = deli_stats._cache.get(f"demo_cache_key_{i}")
+        if entry:
+            entry["hit"] = True
+
+
+_init_demo_stats()

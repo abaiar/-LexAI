@@ -6,7 +6,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('access_token') || '')
   const userName = ref(localStorage.getItem('user_name') || '')
   const userEmail = ref(localStorage.getItem('user_email') || '')
-  const userPlan = ref(localStorage.getItem('user_plan') || 'Free')
+  const userPlan = ref(localStorage.getItem('user_plan') || '免费版')
 
   const isAuthenticated = computed(() => !!token.value)
 
@@ -46,7 +46,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     userName.value = ''
     userEmail.value = ''
-    userPlan.value = 'Free'
+    userPlan.value = '免费版'
     localStorage.removeItem('access_token')
     localStorage.removeItem('user_name')
     localStorage.removeItem('user_email')
