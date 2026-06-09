@@ -365,7 +365,6 @@ LexAI/
 │   ├── vite.config.ts
 │   └── tailwind.config.js
 │
-├── UPGRADE_ROADMAP.md                    # 升级路线规划文档
 ├── README.md                             # 项目说明（中文）
 ├── README_EN.md                          # 项目说明（英文）
 └── .gitignore
